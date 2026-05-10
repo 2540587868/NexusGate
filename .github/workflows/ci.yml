@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.22', '1.23']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -ldflags "-X main.version=ci -X main.gitCommit=${{ github.sha }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/nexusgate/
+
+      - name: Test
+        run: go test ./... -count=1 -timeout 120s -race -coverprofile=coverage.out
+
+      - name: Coverage report
+        run: |
+          echo "## Test Coverage"
+          go tool cover -func=coverage.out | tail -1
+          echo ""
+          echo "### Per-package coverage"
+          go tool cover -func=coverage.out | grep -E "^github.com/nexusgate/nexusgate/internal/" | sort -t: -k2 -n
+
+      - name: Upload coverage
+        if: matrix.go-version == '1.23'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-out
+          path: coverage.out
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: nexusgate:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,106 @@
+server:
+  listen: ":8080"
+  tls_listen: ":8443"
+  tls_cert: "/etc/nexusgate/tls/server.crt"
+  tls_key: "/etc/nexusgate/tls/server.key"
+
+gateway:
+  shard_count: 8
+  worker_per_shard: 1
+  queue_size: 4096
+  slow_recovery_threshold: 0.9
+
+proxy:
+  default_mode: "splice"
+  connect_timeout: 5s
+  read_timeout: 30s
+  write_timeout: 30s
+  pool_size: 256
+  pool_max_idle: 64
+
+router:
+  default_strategy: "consistent_hash"
+  consistent_hash:
+    virtual_nodes: 150
+  weighted_round_robin: {}
+  least_conn: {}
+  header_route:
+    header: "X-Service-Version"
+
+middleware:
+  order:
+    - trace
+    - ratelimit
+    - cors
+    - circuitbreaker
+  trace:
+    service_name: "nexusgate"
+    endpoint: "http://otel-collector:4318"
+  ratelimit:
+    requests_per_second: 10000
+    burst: 20000
+  cors:
+    allow_origins:
+      - "https://your-domain.com"
+    allow_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    allow_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-API-Key"
+      - "X-Request-ID"
+    allow_credentials: true
+    max_age: 3600
+  circuitbreaker:
+    failure_threshold: 5
+    success_threshold: 3
+    timeout: 30s
+
+plugin:
+  dir: "/etc/nexusgate/plugins"
+  hot_reload: true
+
+config:
+  etcd:
+    endpoints:
+      - "http://etcd:2379"
+    prefix: "/nexusgate/"
+    watch: true
+  cache:
+    miss_threshold: 100
+
+lifecycle:
+  graceful_timeout: 30s
+  recoverable: true
+  health_check:
+    interval: 10s
+    timeout: 5s
+    unhealthy_threshold: 3
+
+logging:
+  level: "info"
+  format: "json"
+  access_log: true
+
+routes:
+  - match:
+      path_prefix: "/api/v1/users"
+    backend:
+      - address: "127.0.0.1:8081"
+        weight: 3
+      - address: "127.0.0.1:8082"
+        weight: 1
+    strategy: "weighted_round_robin"
+    middleware:
+      - trace
+      - ratelimit
+
+  - match:
+      path_prefix: "/api/v1/orders"
+    backend:
+      - address: "127.0.0.1:8083"
+        weight: 1
+    strategy: "consistent_hash"

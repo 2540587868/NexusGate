@@ -1,0 +1,9 @@
+*.exe
+*.test
+coverage.out
+nexusgate
+nexusgate-*
+.git
+.github
+*.md
+articles/
