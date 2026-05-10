@@ -2,6 +2,7 @@ server:
   listen: ":9090"
   metrics_listen: ":9091"
   dashboard_listen: ":9092"
+  dashboard_token: "nexusgate-admin-2026"
 
 gateway:
   shard_count: 4

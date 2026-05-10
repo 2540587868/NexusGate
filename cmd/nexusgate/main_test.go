@@ -49,7 +49,7 @@ func startGateway(t *testing.T, rt *router.Router, px *proxy.Proxy) string {
 
 	handler := chain.Then(buildHandler(rt, px))
 
-	gw := gateway.NewGateway(handler, 1024)
+	gw := gateway.NewGateway(handler, 8, 1024)
 	t.Cleanup(func() { gw.Close() })
 
 	parser := httparser.NewParser()

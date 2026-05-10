@@ -24,10 +24,18 @@ type AuthConfig struct {
 	Type            AuthType
 	APIKeyHeader    string
 	APIKeys         map[string]APIKeyEntry
+	apiKeyList      []apiKeyEntry
 	JWTHMACSecret   string
 	JWTAllowedAlgs  []string
 	SkipPaths       []string
 	Realm           string
+}
+
+type apiKeyEntry struct {
+	Key      string
+	TenantID string
+	Scopes   []string
+	Active   bool
 }
 
 type APIKeyEntry struct {
@@ -55,6 +63,14 @@ func Auth(cfg AuthConfig) gateway.Middleware {
 	}
 	if len(am.config.JWTAllowedAlgs) == 0 {
 		am.config.JWTAllowedAlgs = []string{"HS256", "HS384", "HS512"}
+	}
+	for k, v := range am.config.APIKeys {
+		am.config.apiKeyList = append(am.config.apiKeyList, apiKeyEntry{
+			Key:      k,
+			TenantID: v.TenantID,
+			Scopes:   v.Scopes,
+			Active:   v.Active,
+		})
 	}
 
 	return func(next gateway.Handler) gateway.Handler {
@@ -97,8 +113,16 @@ func (am *authMiddleware) apiKeyAuth(next gateway.Handler, req *gateway.Request)
 			fmt.Sprintf("provide %s header", am.config.APIKeyHeader))
 	}
 
-	entry, ok := am.config.APIKeys[key]
-	if !ok || !entry.Active {
+	var matched *apiKeyEntry
+	for i := range am.config.apiKeyList {
+		entry := &am.config.apiKeyList[i]
+		if subtle.ConstantTimeCompare([]byte(key), []byte(entry.Key)) == 1 && entry.Active {
+			matched = entry
+			break
+		}
+	}
+
+	if matched == nil {
 		slog.Warn("invalid API key attempt",
 			"remote", req.RemoteAddr,
 			"path", req.Path,
@@ -107,12 +131,7 @@ func (am *authMiddleware) apiKeyAuth(next gateway.Handler, req *gateway.Request)
 			"invalid API key", "key not found or inactive")
 	}
 
-	if subtle.ConstantTimeCompare([]byte(key), []byte(key)) != 1 {
-		return nil, gateway.NewGatewayError(gateway.ErrUnauthorized,
-			"invalid API key", "authentication failed")
-	}
-
-	req.TenantID = entry.TenantID
+	req.TenantID = matched.TenantID
 
 	return next(req)
 }

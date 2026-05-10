@@ -57,7 +57,25 @@ func NewRouter() *Router {
 	r.selectors[StrategyConsistentHash] = NewConsistentHash(150)
 	r.selectors[StrategyWeightedRR] = NewWeightedRR()
 	r.selectors[StrategyLeastConn] = NewLeastConn()
-	r.selectors[StrategyHeaderRoute] = NewHeaderRoute()
+	r.selectors[StrategyHeaderRoute] = NewHeaderRoute("X-Service-Version")
+	return r
+}
+
+func NewRouterWithConfig(virtualNodes int, headerRouteKey string) *Router {
+	r := &Router{
+		routes:    make([]*Route, 0),
+		selectors: make(map[StrategyType]Selector[string]),
+	}
+	if virtualNodes <= 0 {
+		virtualNodes = 150
+	}
+	r.selectors[StrategyConsistentHash] = NewConsistentHash(virtualNodes)
+	r.selectors[StrategyWeightedRR] = NewWeightedRR()
+	r.selectors[StrategyLeastConn] = NewLeastConn()
+	if headerRouteKey == "" {
+		headerRouteKey = "X-Service-Version"
+	}
+	r.selectors[StrategyHeaderRoute] = NewHeaderRoute(headerRouteKey)
 	return r
 }
 
@@ -143,21 +161,27 @@ func (r *Router) Route(req *gateway.Request) (*Route, *Backend, error) {
 
 func (r *Router) match(req *gateway.Request) *Route {
 	for _, route := range r.routes {
-		if r.matchRule(req, &route.Match) {
-			if len(route.Match.Methods) > 0 {
-				found := false
-				for _, m := range route.Match.Methods {
-					if m == req.Method {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
+		if !r.matchRule(req, &route.Match) {
+			continue
+		}
+		if len(route.Match.Methods) > 0 {
+			found := false
+			for _, m := range route.Match.Methods {
+				if m == req.Method {
+					found = true
+					break
 				}
 			}
-			return route
+			if !found {
+				continue
+			}
 		}
+		if len(route.Match.Headers) > 0 {
+			if !r.matchHeaders(req, route.Match.Headers) {
+				continue
+			}
+		}
+		return route
 	}
 	return nil
 }
@@ -170,6 +194,28 @@ func (r *Router) matchRule(req *gateway.Request, rule *MatchRule) bool {
 		return strings.HasPrefix(req.Path, rule.PathPrefix)
 	}
 	return false
+}
+
+func (r *Router) matchHeaders(req *gateway.Request, headers map[string]string) bool {
+	for key, expected := range headers {
+		actual := req.Headers.Get(key)
+		if actual != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *Router) Release(strategy StrategyType, address string) {
+	r.mu.RLock()
+	selector, ok := r.selectors[strategy]
+	r.mu.RUnlock()
+	if !ok {
+		return
+	}
+	if lc, ok := selector.(*LeastConn); ok {
+		lc.Release(address)
+	}
 }
 
 func (r *Router) Routes() []*Route {

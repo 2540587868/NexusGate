@@ -5,6 +5,7 @@ server:
   tls_key: "/etc/nexusgate/tls/server.key"
   metrics_listen: ":9091"
   dashboard_listen: ":9092"
+  dashboard_token: ""
 
 gateway:
   shard_count: 8

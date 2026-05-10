@@ -13,7 +13,7 @@ func TestNewGateway(t *testing.T) {
 		return &Response{StatusCode: 200, Body: []byte("ok")}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	if gw == nil {
@@ -21,8 +21,8 @@ func TestNewGateway(t *testing.T) {
 	}
 
 	stats := gw.Stats()
-	if len(stats) != ShardCount {
-		t.Errorf("expected %d shards, got %d", ShardCount, len(stats))
+	if len(stats) != DefaultShardCount {
+		t.Errorf("expected %d shards, got %d", DefaultShardCount, len(stats))
 	}
 }
 
@@ -33,7 +33,7 @@ func TestGatewayDispatch(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	req := &Request{
@@ -61,7 +61,7 @@ func TestGatewayDispatchMultiple(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	for i := 0; i < 100; i++ {
@@ -92,7 +92,7 @@ func TestGatewayDispatchSameTenantSameShard(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	req1 := &Request{TenantID: "tenant-A", Method: "GET", Path: "/", Headers: map[string][]string{}}
@@ -116,7 +116,7 @@ func TestGatewayQueueFull(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 2)
+	gw := NewGateway(handler, 1, 2)
 	defer gw.Close()
 
 	for i := 0; i < 2; i++ {
@@ -148,7 +148,7 @@ func TestGatewayDispatchSync(t *testing.T) {
 		return &Response{StatusCode: 200, Body: []byte("sync-ok")}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	req := &Request{
@@ -176,7 +176,7 @@ func TestGatewayDispatchSyncTimeout(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	gw.syncTimeout = 50 * time.Millisecond
 	defer gw.Close()
 
@@ -198,7 +198,7 @@ func TestGatewayClose(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	gw.Close()
 
 	_ = gw
@@ -209,12 +209,12 @@ func TestGatewayStats(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	stats := gw.Stats()
-	if len(stats) != ShardCount {
-		t.Errorf("expected %d shard stats, got %d", ShardCount, len(stats))
+	if len(stats) != DefaultShardCount {
+		t.Errorf("expected %d shard stats, got %d", DefaultShardCount, len(stats))
 	}
 }
 
@@ -226,7 +226,7 @@ func TestGatewaySlowRecover(t *testing.T) {
 		return &Response{StatusCode: 200}, nil
 	}
 
-	gw := NewGateway(handler, 4)
+	gw := NewGateway(handler, 1, 4)
 	defer gw.Close()
 
 	for i := 0; i < 4; i++ {
@@ -259,7 +259,7 @@ func TestGatewayErrorInHandler(t *testing.T) {
 		return nil, NewGatewayError(ErrBackendDown, "backend error", "test backend")
 	}
 
-	gw := NewGateway(handler, 1024)
+	gw := NewGateway(handler, 8, 1024)
 	defer gw.Close()
 
 	req := &Request{

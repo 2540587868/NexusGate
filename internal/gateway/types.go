@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const ShardCount = 8
+const DefaultShardCount = 8
 
 type Request struct {
 	ID          string
@@ -45,7 +45,7 @@ func (r *Request) ShardKey() uint32 {
 	if r.shardKey == 0 {
 		h := fnv.New32a()
 		h.Write([]byte(r.TenantID))
-		r.shardKey = h.Sum32() % ShardCount
+		r.shardKey = h.Sum32()
 	}
 	return r.shardKey
 }

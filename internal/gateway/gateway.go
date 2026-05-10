@@ -17,19 +17,30 @@ type Shard struct {
 }
 
 type Gateway struct {
-	shards      [ShardCount]*Shard
-	handler     Handler
-	queueSize   int
-	syncTimeout time.Duration
+	shards               []*Shard
+	handler              Handler
+	queueSize            int
+	syncTimeout          time.Duration
+	slowRecoveryThreshold float64
+	shardCount           int
 }
 
-func NewGateway(handler Handler, queueSize int) *Gateway {
-	gw := &Gateway{
-		handler:     handler,
-		queueSize:   queueSize,
-		syncTimeout: 30 * time.Second,
+func NewGateway(handler Handler, shardCount, queueSize int) *Gateway {
+	if shardCount <= 0 {
+		shardCount = 8
 	}
-	for i := 0; i < ShardCount; i++ {
+	if queueSize <= 0 {
+		queueSize = 4096
+	}
+	gw := &Gateway{
+		handler:               handler,
+		queueSize:             queueSize,
+		syncTimeout:           30 * time.Second,
+		slowRecoveryThreshold: 0.9,
+		shardCount:            shardCount,
+	}
+	gw.shards = make([]*Shard, shardCount)
+	for i := 0; i < shardCount; i++ {
 		shard := &Shard{
 			id:     i,
 			queue:  make(chan *Request, queueSize),
@@ -38,7 +49,7 @@ func NewGateway(handler Handler, queueSize int) *Gateway {
 		gw.shards[i] = shard
 		go shard.run()
 	}
-	slog.Info("gateway initialized", "shards", ShardCount, "queue_size", queueSize)
+	slog.Info("gateway initialized", "shards", shardCount, "queue_size", queueSize)
 	return gw
 }
 
@@ -47,12 +58,19 @@ func (gw *Gateway) WithSyncTimeout(d time.Duration) *Gateway {
 	return gw
 }
 
+func (gw *Gateway) WithSlowRecoveryThreshold(t float64) *Gateway {
+	if t > 0 && t <= 1.0 {
+		gw.slowRecoveryThreshold = t
+	}
+	return gw
+}
+
 func (gw *Gateway) Dispatch(req *Request) error {
-	shardIdx := req.ShardKey()
+	shardIdx := req.ShardKey() % uint32(gw.shardCount)
 	shard := gw.shards[shardIdx]
 
 	utilization := float64(shard.pending.Load()) / float64(gw.queueSize)
-	if utilization > 0.9 && shard.recovering.CompareAndSwap(false, true) {
+	if utilization > gw.slowRecoveryThreshold && shard.recovering.CompareAndSwap(false, true) {
 		slog.Warn("shard queue near capacity, slow recovery active",
 			"shard", shard.id, "pending", shard.pending.Load(), "capacity", gw.queueSize)
 		go shard.slowRecover()
@@ -144,7 +162,7 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		ShardCount: ShardCount,
+		ShardCount: 8,
 		QueueSize:  4096,
 	}
 }

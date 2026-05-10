@@ -4,9 +4,12 @@ type HeaderRoute struct {
 	headerName string
 }
 
-func NewHeaderRoute() *HeaderRoute {
+func NewHeaderRoute(headerName string) *HeaderRoute {
+	if headerName == "" {
+		headerName = "X-Service-Version"
+	}
 	return &HeaderRoute{
-		headerName: "X-Service-Version",
+		headerName: headerName,
 	}
 }
 

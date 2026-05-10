@@ -33,8 +33,8 @@ func TestRequestShardKey(t *testing.T) {
 		t.Logf("note: different tenants may hash to same shard (both=%d), this is ok", key1)
 	}
 
-	if key1 >= ShardCount {
-		t.Errorf("shard key %d exceeds ShardCount %d", key1, ShardCount)
+	if key1 == 0 {
+		t.Errorf("shard key should not be zero for non-empty tenant")
 	}
 }
 
