@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusGate Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .header { background: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; }
+        .header h1 { font-size: 20px; font-weight: 600; color: #38bdf8; }
+        .header .version { font-size: 12px; color: #94a3b8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+        .card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .card .value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
+        .card .value.healthy { color: #4ade80; }
+        .card .value.unhealthy { color: #f87171; }
+        .card .value.info { color: #38bdf8; }
+        .section { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; margin-bottom: 24px; }
+        .section h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #e2e8f0; }
+        .topology-container { width: 100%; height: 400px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #334155; font-size: 13px; }
+        th { color: #94a3b8; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+        .badge.healthy { background: #166534; color: #4ade80; }
+        .badge.unhealthy { background: #991b1b; color: #f87171; }
+        .strategy { color: #a78bfa; font-size: 12px; }
+        .refresh-info { font-size: 12px; color: #64748b; }
+        .nav { display: flex; gap: 8px; }
+        .nav a { color: #94a3b8; text-decoration: none; padding: 4px 12px; border-radius: 6px; font-size: 13px; }
+        .nav a:hover { background: #334155; color: #e2e8f0; }
+        .nav a.active { background: #1d4ed8; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>NexusGate Dashboard</h1>
+            <div class="version" id="version-info">loading...</div>
+        </div>
+        <div class="nav">
+            <a href="#" class="active" onclick="showTab('overview')">Overview</a>
+            <a href="#" onclick="showTab('topology')">Topology</a>
+            <a href="#" onclick="showTab('routes')">Routes</a>
+            <a href="#" onclick="showTab('backends')">Backends</a>
+        </div>
+        <div class="refresh-info">Auto-refresh: 5s | <span id="last-refresh">-</span></div>
+    </div>
+
+    <div class="container">
+        <div id="tab-overview">
+            <div class="cards" id="overview-cards"></div>
+        </div>
+
+        <div id="tab-topology" style="display:none">
+            <div class="section">
+                <h2>Traffic Topology</h2>
+                <div class="topology-container" id="topology-cytoscape"></div>
+            </div>
+        </div>
+
+        <div id="tab-routes" style="display:none">
+            <div class="section">
+                <h2>Routes</h2>
+                <table>
+                    <thead><tr><th>Path</th><th>Strategy</th><th>Backends</th></tr></thead>
+                    <tbody id="routes-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-backends" style="display:none">
+            <div class="section">
+                <h2>Backends</h2>
+                <table>
+                    <thead><tr><th>Address</th><th>Status</th><th>Fails</th><th>Last Check</th></tr></thead>
+                    <tbody id="backends-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const API = '/api/v1';
+    let currentTab = 'overview';
+
+    function showTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+        document.getElementById('tab-' + tab).style.display = '';
+        document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+        event.target.classList.add('active');
+        if (tab === 'topology') loadTopology();
+    }
+
+    async function fetchJSON(url) {
+        const resp = await fetch(API + url);
+        return resp.json();
+    }
+
+    async function loadOverview() {
+        const data = await fetchJSON('/overview');
+        document.getElementById('version-info').textContent = `v${data.version} (${data.commit?.substring(0,7) || 'dev'}) | uptime: ${data.uptime}`;
+        document.getElementById('overview-cards').innerHTML = `
+            <div class="card"><div class="label">Routes</div><div class="value info">${data.routes}</div></div>
+            <div class="card"><div class="label">Backends</div><div class="value info">${data.backends}</div></div>
+            <div class="card"><div class="label">Healthy</div><div class="value healthy">${data.healthyBackends}</div></div>
+            <div class="card"><div class="label">Unhealthy</div><div class="value unhealthy">${data.unhealthyBackends}</div></div>
+            <div class="card"><div class="label">Shards</div><div class="value">${data.gateway?.shardCount || '-'}</div></div>
+            <div class="card"><div class="label">Queue Size</div><div class="value">${data.gateway?.queueSize || '-'}</div></div>
+        `;
+    }
+
+    async function loadRoutes() {
+        const data = await fetchJSON('/routes');
+        const tbody = document.getElementById('routes-tbody');
+        tbody.innerHTML = (data.routes || []).map(r => `
+            <tr>
+                <td><code>${r.match.path_prefix || r.match.path_exact || '/'}</code></td>
+                <td><span class="strategy">${r.strategy || 'default'}</span></td>
+                <td>${(r.backends || []).map(b => `<code>${b.address}</code> <small>(w:${b.weight})</small>`).join(', ')}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadBackends() {
+        const data = await fetchJSON('/backends');
+        const tbody = document.getElementById('backends-tbody');
+        tbody.innerHTML = (data.backends || []).map(b => `
+            <tr>
+                <td><code>${b.address}</code></td>
+                <td><span class="badge ${b.healthy ? 'healthy' : 'unhealthy'}">${b.healthy ? 'HEALTHY' : 'UNHEALTHY'}</span></td>
+                <td>${b.consecutiveFails}</td>
+                <td>${b.lastCheck ? new Date(b.lastCheck).toLocaleTimeString() : '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadTopology() {
+        const data = await fetchJSON('/topology');
+        const container = document.getElementById('topology-cytoscape');
+
+        if (typeof cytoscape === 'undefined') {
+            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8">Topology view requires Cytoscape.js</div>';
+            return;
+        }
+
+        const elements = [];
+        (data.nodes || []).forEach(n => {
+            let bg = '#1e293b', bc = '#475569', shape = 'round-rectangle';
+            if (n.type === 'gateway') { bg = '#1e3a5f'; bc = '#38bdf8'; shape = 'hexagon'; }
+            else if (n.type === 'route') { bg = '#1e293b'; bc = '#a78bfa'; shape = 'round-rectangle'; }
+            else if (n.type === 'backend') { bg = n.healthy ? '#14532d' : '#7f1d1d'; bc = n.healthy ? '#4ade80' : '#f87171'; shape = 'ellipse'; }
+            elements.push({ data: { id: n.id, label: n.label }, style: { 'background-color': bg, 'border-color': bc, 'border-width': 2, 'shape': shape } });
+        });
+        (data.edges || []).forEach(e => {
+            let color = '#475569';
+            if (e.type === 'routes_to') color = '#a78bfa';
+            else if (e.type === 'forwards_to') color = '#38bdf8';
+            elements.push({ data: { id: e.id, source: e.source, target: e.target }, style: { 'line-color': color, 'target-arrow-color': color, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.8 } });
+        });
+
+        if (window._cy) window._cy.destroy();
+        window._cy = cytoscape({
+            container: container,
+            elements: elements,
+            style: [
+                { selector: 'node', style: { 'label': 'data(label)', 'text-wrap': 'wrap', 'text-valign': 'center', 'text-halign': 'center', 'font-size': 11, 'color': '#e2e8f0', 'width': 120, 'height': 50, 'text-max-width': 110 } },
+                { selector: 'edge', style: { 'width': 2 } }
+            ],
+            layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.5, padding: 30 }
+        });
+    }
+
+    async function refresh() {
+        try {
+            await loadOverview();
+            if (currentTab === 'routes') await loadRoutes();
+            if (currentTab === 'backends') await loadBackends();
+            if (currentTab === 'topology') await loadTopology();
+            document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
+        } catch(e) { console.error('refresh error', e); }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+    </script>
+    <script src="/static/lib/cytoscape.min.js" onerror="console.log('cytoscape.js not loaded, topology view disabled')"></script>
+</body>
+</html>

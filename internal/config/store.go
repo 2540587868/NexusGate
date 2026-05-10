@@ -13,11 +13,12 @@ import (
 )
 
 type ServerConfig struct {
-	Listen       string `yaml:"listen"`
-	TLSListen    string `yaml:"tls_listen"`
-	TLSCert      string `yaml:"tls_cert"`
-	TLSKey       string `yaml:"tls_key"`
-	MetricsListen string `yaml:"metrics_listen"`
+	Listen         string `yaml:"listen"`
+	TLSListen      string `yaml:"tls_listen"`
+	TLSCert        string `yaml:"tls_cert"`
+	TLSKey         string `yaml:"tls_key"`
+	MetricsListen  string `yaml:"metrics_listen"`
+	DashboardListen string `yaml:"dashboard_listen"`
 }
 
 type GatewayConfig struct {

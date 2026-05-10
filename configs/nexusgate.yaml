@@ -3,6 +3,8 @@ server:
   tls_listen: ":8443"
   tls_cert: "/etc/nexusgate/tls/server.crt"
   tls_key: "/etc/nexusgate/tls/server.key"
+  metrics_listen: ":9091"
+  dashboard_listen: ":9092"
 
 gateway:
   shard_count: 8

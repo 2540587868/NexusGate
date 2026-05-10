@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"time"
 
 	"github.com/nexusgate/nexusgate/internal/config"
+	"github.com/nexusgate/nexusgate/internal/dashboard"
 	"github.com/nexusgate/nexusgate/internal/gateway"
 	"github.com/nexusgate/nexusgate/internal/httparser"
 	"github.com/nexusgate/nexusgate/internal/lifecycle"
@@ -24,6 +26,7 @@ var (
 	version   = "dev"
 	gitCommit = "none"
 	buildTime = "unknown"
+	startTime = time.Now()
 )
 
 func main() {
@@ -44,6 +47,27 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := store.Get()
+
+	var slogLevel slog.Level
+	switch cfg.Logging.Level {
+	case "debug":
+		slogLevel = slog.LevelDebug
+	case "warn":
+		slogLevel = slog.LevelWarn
+	case "error":
+		slogLevel = slog.LevelError
+	default:
+		slogLevel = slog.LevelInfo
+	}
+
+	var slogHandler slog.Handler
+	switch cfg.Logging.Format {
+	case "text":
+		slogHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevel})
+	default:
+		slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevel})
+	}
+	slog.SetDefault(slog.New(slogHandler))
 
 	rt := router.NewRouter()
 	routes := config.BuildRoutes(cfg)
@@ -195,9 +219,29 @@ func main() {
 		go func() {
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", middleware.MetricsHandler())
+			mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q,"uptime":%q}`, version, gitCommit, time.Since(startTime).Truncate(time.Second))
+			})
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 			slog.Info("NexusGate metrics listening", "address", cfg.Server.MetricsListen)
 			if err := http.ListenAndServe(cfg.Server.MetricsListen, mux); err != nil {
 				slog.Error("metrics server error", "error", err)
+			}
+		}()
+	}
+
+	if cfg.Server.DashboardListen != "" {
+		go func() {
+			dashSrv := dashboard.NewServer(store, hc, rt, version, gitCommit, buildTime)
+			slog.Info("NexusGate dashboard listening", "address", cfg.Server.DashboardListen)
+			if err := http.ListenAndServe(cfg.Server.DashboardListen, dashSrv.Handler()); err != nil {
+				slog.Error("dashboard server error", "error", err)
 			}
 		}()
 	}

@@ -1,15 +1,17 @@
 # Roadmap: NexusGate
 
-> 最后更新: 2026-05-10 | 版本: v0.3
+> 最后更新: 2026-05-11 | 版本: v0.4
 
 ## 项目现状
 
-- 代码文件: 35 个
-- 测试文件: 11 个
+- 代码文件: 36 个
+- 测试文件: 12 个
 - 测试覆盖率: 49.8%
 - 已知问题: 0 个
 - 技术债: 6 项
 - 优化计划: 31/31 已完成（见 go-optimize-plan.md）
+- CI/CD: ✅ GitHub Actions（CI + Deploy + Release）
+- Docker: ✅ GHCR 镜像 + 服务器部署
 
 ## 🔴 P0 — 紧急（立即处理）
 
@@ -27,6 +29,7 @@
 | 5 | ✨ feature | ✅ etcd 配置集成（加载+Watch+动态更新） | 无法从 etcd 动态加载配置，仅支持文件 | 2-3天 | internal/config/etcd.go |
 | 6 | 🔧 techdebt | ✅ cmd/nexusgate 测试补全（buildAuthConfig + buildHandler + 集成测试） | 启动流程变更无法自动检测回归 | 1天 | cmd/nexusgate/main.go |
 | 7 | 🔧 techdebt | ✅ 核心包覆盖率提升（gateway +7 测试、httparser +6 测试） | 核心逻辑变更风险高 | 2-3天 | internal/gateway/, internal/httparser/, internal/config/ |
+| 31 | ✨ feature | Admin Dashboard 可视化面板 | 网关运行状态完全不可见，无法直观监控流量、路由、后端健康 | 3-5天 | internal/dashboard/ (新增) |
 
 ## 🟡 P2 — 中优先级（下个版本）
 
@@ -40,19 +43,23 @@
 | 13 | 🔧 techdebt | 配置中 logging.level/format 未应用到 slog | 日志级别和格式配置无效 | <1天 | cmd/nexusgate/main.go |
 | 14 | 📊 observability | 缺少 pprof 调试端点 | 生产环境性能问题难以排查 | <1小时 | cmd/nexusgate/main.go |
 | 15 | 📊 observability | 缺少自健康检查 HTTP 端点（/healthz） | K8s/负载均衡器无法探测网关自身健康 | <1天 | cmd/nexusgate/main.go |
+| 32 | ✨ feature | Admin API（RESTful 接口：路由管理、后端管理、配置查看/热更新） | Dashboard 需要后端 API 支撑，当前无任何管理接口 | 2-3天 | internal/dashboard/api.go (新增) |
+| 33 | 📊 observability | 实时流量拓扑可视化（Cytoscape.js 展示路由→后端关系图） | 路由和后端关系只能看配置文件，无法直观理解 | 2-3天 | internal/dashboard/static/ (新增) |
 
 ## 🔵 P3 — 低优先级（排期待定）
 
 | # | 类别 | 描述 | 影响 | 工作量 | 关联文件 |
 |---|------|------|------|--------|----------|
 | 16 | ✨ feature | 路由正则匹配支持 | 复杂路由规则无法表达 | 1天 | internal/router/router.go |
-| 17 | ✨ feature | Admin API（路由管理、后端管理、配置查看） | 无法运行时动态管理 | 2-3天 | cmd/nexusgate/main.go, internal/ |
+| 17 | ✨ feature | ~~Admin API（路由管理、后端管理、配置查看）~~ → 升级为 #31+#32 | 无法运行时动态管理 | 2-3天 | cmd/nexusgate/main.go, internal/ |
 | 18 | ✨ feature | 服务发现集成（Consul/etcd 后端自动注册） | 后端上下线需手动改配置 | 2-3天 | internal/router/, internal/config/ |
-| 19 | 🚀 ops | Dockerfile + docker-compose 多阶段构建 | 部署效率低 | <1天 | 项目根目录 |
-| 20 | 🚀 ops | CI/CD 流水线（GitHub Actions） | 无自动化测试和发布 | 1天 | .github/workflows/ |
-| 21 | 🚀 ops | 版本号管理（ldflags 注入） | 无法确认运行版本 | <1小时 | cmd/nexusgate/main.go, Makefile |
+| 19 | 🚀 ops | ✅ Dockerfile + docker-compose 多阶段构建 | 部署效率低 | <1天 | 项目根目录 |
+| 20 | 🚀 ops | ✅ CI/CD 流水线（GitHub Actions） | 无自动化测试和发布 | 1天 | .github/workflows/ |
+| 21 | 🚀 ops | ✅ 版本号管理（ldflags 注入） | 无法确认运行版本 | <1小时 | cmd/nexusgate/main.go, Makefile |
 | 22 | 🔧 techdebt | 配置中 cache.miss_threshold 未实现 | 缓存配置项无功能对应 | 1天 | internal/config/ |
 | 23 | 🔧 techdebt | 路由匹配线性搜索，大规模路由场景性能差 | 100+ 路由时匹配延迟增加 | 2-3天 | internal/router/router.go |
+| 34 | ✨ feature | Dashboard 实时日志流（WebSocket 推送访问日志到浏览器） | 排查问题需登录服务器看 docker logs | 1-2天 | internal/dashboard/ |
+| 35 | ✨ feature | Dashboard 配置编辑器（在线编辑 YAML + 热更新） | 修改配置需 SSH 到服务器改文件 | 2-3天 | internal/dashboard/ |
 
 ## ⚪ P4 — 可选（有空再做）
 
@@ -65,15 +72,16 @@
 | 28 | 📝 docs | 配置项完整说明文档 | 配置含义不明确 | <1天 | configs/ |
 | 29 | ⚡ perf | sync.Pool 复用 Request/Response 对象 | 高 QPS 下 GC 压力大 | 1天 | internal/gateway/types.go |
 | 30 | ⚡ perf | 连接池指标暴露和调优 | 无法监控连接池利用率 | <1天 | internal/proxy/proxy.go |
+| 36 | 📊 observability | Grafana Dashboard 模板（导入即用的 JSON 模板） | 需要自己从零搭建 Grafana 面板 | 1天 | deploy/grafana/ |
 
 ## 版本规划
 
 | 版本 | 目标 | 包含项目 | 状态 |
 |------|------|----------|------|
 | v0.3 | 安全加固 + 可观测性基础 | #1, #2, #3, #4, #6 | ✅ 已完成 |
-| v0.4 | 功能完善 + 测试补全 | #5, #7, #8, #9, #10, #12, #13, #14, #15 | 🔄 进行中 |
-| v0.5 | 运维就绪 + 生态集成 | #11, #16, #17, #18, #19, #20, #21, #22 | ⬜ 计划中 |
-| v1.0 | 生产级稳定版 | #23, #24, #25, #26, #27, #28, #29, #30 | ⬜ 远期 |
+| v0.4 | 功能完善 + 测试补全 + 可视化 | #5, #7, #8, #9, #10, #12, #13, #14, #15, #31, #32, #33 | 🔄 进行中 |
+| v0.5 | 运维就绪 + 生态集成 | #11, #16, #18, #22, #34, #35 | ⬜ 计划中 |
+| v1.0 | 生产级稳定版 | #23, #24, #25, #26, #27, #28, #29, #30, #36 | ⬜ 远期 |
 
 ## 变更记录
 
@@ -88,3 +96,13 @@
 | 2026-05-10 | ✅ 完成 P1 #6 cmd/nexusgate 测试补全 |
 | 2026-05-10 | ✅ 完成 P1 #7 核心包覆盖率提升 |
 | 2026-05-10 | v0.3 版本完成，进入 v0.4 |
+| 2026-05-11 | ✅ 完成 P3 #19 Dockerfile + docker-compose 部署 |
+| 2026-05-11 | ✅ 完成 P3 #20 CI/CD 流水线（GitHub Actions: CI + Deploy + Release） |
+| 2026-05-11 | ✅ 完成 P3 #21 版本号管理（ldflags 注入） |
+| 2026-05-11 | 新增 #31 Admin Dashboard 可视化面板（P1） |
+| 2026-05-11 | 新增 #32 Admin API RESTful 接口（P2） |
+| 2026-05-11 | 新增 #33 实时流量拓扑可视化（P2） |
+| 2026-05-11 | 新增 #34 Dashboard 实时日志流（P3） |
+| 2026-05-11 | 新增 #35 Dashboard 配置编辑器（P3） |
+| 2026-05-11 | 新增 #36 Grafana Dashboard 模板（P4） |
+| 2026-05-11 | #17 Admin API 升级合并为 #31+#32，原 #17 标记为已替代 |

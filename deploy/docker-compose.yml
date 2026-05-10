@@ -5,6 +5,7 @@ services:
       - "9090:9090"
       - "9443:8443"
       - "9091:9091"
+      - "9092:9092"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
