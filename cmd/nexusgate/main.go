@@ -65,7 +65,7 @@ func main() {
 	initConfigWatcher(store, rt, hc, recoverable, graceful)
 	initListeners(cfg, parser, gw, graceful)
 	initMetricsServer(cfg, graceful)
-	initDashboardServer(cfg, store, hc, rt, graceful)
+	initDashboardServer(cfg, store, hc, rt, gw, graceful)
 
 	graceful.OnShutdown(func() error {
 		slog.Info("closing gateway")
@@ -266,12 +266,12 @@ func initMetricsServer(cfg *config.Config, graceful *lifecycle.Graceful) {
 	}()
 }
 
-func initDashboardServer(cfg *config.Config, store *config.Store, hc *lifecycle.HealthChecker, rt *router.Router, graceful *lifecycle.Graceful) {
+func initDashboardServer(cfg *config.Config, store *config.Store, hc *lifecycle.HealthChecker, rt *router.Router, gw *gateway.Gateway, graceful *lifecycle.Graceful) {
 	if cfg.Server.DashboardListen == "" {
 		return
 	}
 	go func() {
-		dashSrv := dashboard.NewServer(store, hc, rt, version, gitCommit, buildTime, cfg.Server.DashboardToken)
+		dashSrv := dashboard.NewServer(store, hc, rt, gw, version, gitCommit, buildTime, cfg.Server.DashboardToken)
 		slog.Info("NexusGate dashboard listening", "address", cfg.Server.DashboardListen)
 		if err := http.ListenAndServe(cfg.Server.DashboardListen, dashSrv.Handler()); err != nil {
 			slog.Error("dashboard server error", "error", err)

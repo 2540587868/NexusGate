@@ -28,6 +28,11 @@
         .badge.healthy { background: #166534; color: #4ade80; }
         .badge.unhealthy { background: #991b1b; color: #f87171; }
         .strategy { color: #a78bfa; font-size: 12px; }
+        .util-bar { width: 100px; height: 8px; background: #334155; border-radius: 4px; display: inline-block; vertical-align: middle; }
+        .util-bar-fill { height: 100%; border-radius: 4px; }
+        .util-bar-fill.low { background: #4ade80; }
+        .util-bar-fill.mid { background: #facc15; }
+        .util-bar-fill.high { background: #f87171; }
         .refresh-info { font-size: 12px; color: #64748b; }
         .nav { display: flex; gap: 8px; }
         .nav a { color: #94a3b8; text-decoration: none; padding: 4px 12px; border-radius: 6px; font-size: 13px; }
@@ -43,6 +48,7 @@
         </div>
         <div class="nav">
             <a href="#" class="active" onclick="showTab('overview')">Overview</a>
+            <a href="#" onclick="showTab('gateway')">Gateway</a>
             <a href="#" onclick="showTab('topology')">Topology</a>
             <a href="#" onclick="showTab('routes')">Routes</a>
             <a href="#" onclick="showTab('backends')">Backends</a>
@@ -53,6 +59,17 @@
     <div class="container">
         <div id="tab-overview">
             <div class="cards" id="overview-cards"></div>
+        </div>
+
+        <div id="tab-gateway" style="display:none">
+            <div class="cards" id="gateway-cards"></div>
+            <div class="section">
+                <h2>Shard Status</h2>
+                <table>
+                    <thead><tr><th>Shard</th><th>Pending</th><th>Queue Size</th><th>Utilization</th><th>Status</th></tr></thead>
+                    <tbody id="gateway-shards-tbody"></tbody>
+                </table>
+            </div>
         </div>
 
         <div id="tab-topology" style="display:none">
@@ -111,7 +128,38 @@
             <div class="card"><div class="label">Unhealthy</div><div class="value unhealthy">${data.unhealthyBackends}</div></div>
             <div class="card"><div class="label">Shards</div><div class="value">${data.gateway?.shardCount || '-'}</div></div>
             <div class="card"><div class="label">Queue Size</div><div class="value">${data.gateway?.queueSize || '-'}</div></div>
+            <div class="card"><div class="label">Pending</div><div class="value">${data.gateway?.totalPending ?? '-'}</div></div>
         `;
+    }
+
+    async function loadGateway() {
+        const data = await fetchJSON('/gateway');
+        const cfg = data.config || {};
+        const rt = data.runtime;
+        document.getElementById('gateway-cards').innerHTML = `
+            <div class="card"><div class="label">Shard Count</div><div class="value info">${cfg.shardCount ?? '-'}</div></div>
+            <div class="card"><div class="label">Workers / Shard</div><div class="value">${cfg.workerPerShard ?? '-'}</div></div>
+            <div class="card"><div class="label">Queue Size</div><div class="value">${cfg.queueSize ?? '-'}</div></div>
+            <div class="card"><div class="label">Recovery Threshold</div><div class="value">${cfg.slowRecoveryThreshold != null ? (cfg.slowRecoveryThreshold * 100).toFixed(0) + '%' : '-'}</div></div>
+            <div class="card"><div class="label">Total Pending</div><div class="value ${rt ? (rt.totalPending > 0 ? 'unhealthy' : 'healthy') : ''}">${rt ? rt.totalPending : '-'}</div></div>
+        `;
+        const tbody = document.getElementById('gateway-shards-tbody');
+        if (rt && rt.shards) {
+            tbody.innerHTML = rt.shards.map(s => {
+                const pct = s.utilization.toFixed(1);
+                const cls = s.utilization < 50 ? 'low' : s.utilization < 80 ? 'mid' : 'high';
+                const statusBadge = s.utilization >= 90 ? '<span class="badge unhealthy">PRESSURE</span>' : s.utilization >= 50 ? '<span class="badge" style="background:#854d0e;color:#facc15">LOADED</span>' : '<span class="badge healthy">NORMAL</span>';
+                return `<tr>
+                    <td>Shard ${s.id}</td>
+                    <td>${s.pending}</td>
+                    <td>${s.queueSize}</td>
+                    <td><div class="util-bar"><div class="util-bar-fill ${cls}" style="width:${Math.min(pct, 100)}%"></div></div> <small>${pct}%</small></td>
+                    <td>${statusBadge}</td>
+                </tr>`;
+            }).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b">Gateway runtime data unavailable</td></tr>';
+        }
     }
 
     async function loadRoutes() {
@@ -178,6 +226,7 @@
     async function refresh() {
         try {
             await loadOverview();
+            if (currentTab === 'gateway') await loadGateway();
             if (currentTab === 'routes') await loadRoutes();
             if (currentTab === 'backends') await loadBackends();
             if (currentTab === 'topology') await loadTopology();

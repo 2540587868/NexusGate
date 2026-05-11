@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nexusgate/nexusgate/internal/config"
+	"github.com/nexusgate/nexusgate/internal/gateway"
 	"github.com/nexusgate/nexusgate/internal/lifecycle"
 	"github.com/nexusgate/nexusgate/internal/router"
 )
@@ -19,6 +20,7 @@ type Server struct {
 	store      *config.Store
 	hc         *lifecycle.HealthChecker
 	rt         *router.Router
+	gw         *gateway.Gateway
 	version    string
 	commit     string
 	buildTime  string
@@ -26,11 +28,12 @@ type Server struct {
 	authToken  string
 }
 
-func NewServer(store *config.Store, hc *lifecycle.HealthChecker, rt *router.Router, ver, commit, bt, authToken string) *Server {
+func NewServer(store *config.Store, hc *lifecycle.HealthChecker, rt *router.Router, gw *gateway.Gateway, ver, commit, bt, authToken string) *Server {
 	return &Server{
 		store:     store,
 		hc:        hc,
 		rt:        rt,
+		gw:        gw,
 		version:   ver,
 		commit:    commit,
 		buildTime: bt,
@@ -47,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/backends", s.handleBackends)
 	mux.HandleFunc("/api/v1/config", s.handleConfig)
 	mux.HandleFunc("/api/v1/topology", s.handleTopology)
+	mux.HandleFunc("/api/v1/gateway", s.handleGateway)
 	mux.HandleFunc("/api/v1/auth", s.handleAuth)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(getStaticFS())))
 	mux.HandleFunc("/", s.handleIndex)
@@ -151,19 +155,32 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	gatewayData := map[string]interface{}{
+		"shardCount":            cfg.Gateway.ShardCount,
+		"workerPerShard":        cfg.Gateway.WorkerPerShard,
+		"queueSize":             cfg.Gateway.QueueSize,
+		"slowRecoveryThreshold": cfg.Gateway.SlowRecoveryThreshold,
+	}
+
+	if s.gw != nil {
+		stats := s.gw.Stats()
+		var totalPending int64
+		for _, p := range stats {
+			totalPending += p
+		}
+		gatewayData["totalPending"] = totalPending
+	}
+
 	writeJSON(w, map[string]interface{}{
-		"version":          s.version,
-		"commit":           s.commit,
-		"buildTime":        s.buildTime,
-		"uptime":           time.Since(s.startTime).Truncate(time.Second).String(),
-		"routes":           len(cfg.Routes),
-		"backends":         len(status),
-		"healthyBackends":  healthyCount,
+		"version":           s.version,
+		"commit":            s.commit,
+		"buildTime":         s.buildTime,
+		"uptime":            time.Since(s.startTime).Truncate(time.Second).String(),
+		"routes":            len(cfg.Routes),
+		"backends":          len(status),
+		"healthyBackends":   healthyCount,
 		"unhealthyBackends": unhealthyCount,
-		"gateway": map[string]interface{}{
-			"shardCount": cfg.Gateway.ShardCount,
-			"queueSize":  cfg.Gateway.QueueSize,
-		},
+		"gateway":           gatewayData,
 	})
 }
 
@@ -318,6 +335,58 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 		"nodes": nodes,
 		"edges": edges,
 	})
+}
+
+func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := s.store.Get()
+
+	result := map[string]interface{}{
+		"config": map[string]interface{}{
+			"shardCount":            cfg.Gateway.ShardCount,
+			"workerPerShard":        cfg.Gateway.WorkerPerShard,
+			"queueSize":             cfg.Gateway.QueueSize,
+			"slowRecoveryThreshold": cfg.Gateway.SlowRecoveryThreshold,
+		},
+	}
+
+	if s.gw != nil {
+		stats := s.gw.Stats()
+		type shardInfo struct {
+			ID          int   `json:"id"`
+			Pending     int64 `json:"pending"`
+			QueueSize   int   `json:"queueSize"`
+			Utilization float64 `json:"utilization"`
+		}
+
+		shards := make([]shardInfo, 0, len(stats))
+		var totalPending int64
+		for i := 0; i < cfg.Gateway.ShardCount; i++ {
+			pending := stats[i]
+			totalPending += pending
+			utilization := 0.0
+			if cfg.Gateway.QueueSize > 0 {
+				utilization = float64(pending) / float64(cfg.Gateway.QueueSize) * 100
+			}
+			shards = append(shards, shardInfo{
+				ID:          i,
+				Pending:     pending,
+				QueueSize:   cfg.Gateway.QueueSize,
+				Utilization: utilization,
+			})
+		}
+
+		result["runtime"] = map[string]interface{}{
+			"totalPending": totalPending,
+			"shards":       shards,
+		}
+	}
+
+	writeJSON(w, result)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
