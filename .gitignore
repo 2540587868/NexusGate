@@ -1,0 +1,37 @@
+# Binaries
+nexusgate
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+*.out
+coverage.txt
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/dist/
+/build/
+
+# Config with secrets (use .example versions for repo)
+configs/*-local.yaml
+configs/*-prod.yaml
+
+# Deploy
+deploy/

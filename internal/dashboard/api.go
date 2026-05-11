@@ -61,6 +61,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		if r.URL.Path == "/api/v1/auth" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/static/") {
 			cookie, err := r.Cookie("nexusgate_token")
 			if err == nil && cookie.Value == s.authToken {
