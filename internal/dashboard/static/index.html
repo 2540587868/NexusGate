@@ -4,41 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexusGate Dashboard</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
-        .header { background: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; }
-        .header h1 { font-size: 20px; font-weight: 600; color: #38bdf8; }
-        .header .version { font-size: 12px; color: #94a3b8; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
-        .card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .card .value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
-        .card .value.healthy { color: #4ade80; }
-        .card .value.unhealthy { color: #f87171; }
-        .card .value.info { color: #38bdf8; }
-        .section { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; margin-bottom: 24px; }
-        .section h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #e2e8f0; }
-        .topology-container { width: 100%; height: 400px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #334155; font-size: 13px; }
-        th { color: #94a3b8; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
-        .badge.healthy { background: #166534; color: #4ade80; }
-        .badge.unhealthy { background: #991b1b; color: #f87171; }
-        .strategy { color: #a78bfa; font-size: 12px; }
-        .util-bar { width: 100px; height: 8px; background: #334155; border-radius: 4px; display: inline-block; vertical-align: middle; }
-        .util-bar-fill { height: 100%; border-radius: 4px; }
-        .util-bar-fill.low { background: #4ade80; }
-        .util-bar-fill.mid { background: #facc15; }
-        .util-bar-fill.high { background: #f87171; }
-        .refresh-info { font-size: 12px; color: #64748b; }
-        .nav { display: flex; gap: 8px; }
-        .nav a { color: #94a3b8; text-decoration: none; padding: 4px 12px; border-radius: 6px; font-size: 13px; }
-        .nav a:hover { background: #334155; color: #e2e8f0; }
-        .nav a.active { background: #1d4ed8; color: #fff; }
-    </style>
+    <link rel="stylesheet" href="/static/css/dashboard.css" />
 </head>
 <body>
     <div class="header">
@@ -47,13 +13,22 @@
             <div class="version" id="version-info">loading...</div>
         </div>
         <div class="nav">
-            <a href="#" class="active" onclick="showTab('overview')">Overview</a>
-            <a href="#" onclick="showTab('gateway')">Gateway</a>
-            <a href="#" onclick="showTab('topology')">Topology</a>
-            <a href="#" onclick="showTab('routes')">Routes</a>
-            <a href="#" onclick="showTab('backends')">Backends</a>
+            <a href="#" class="active" onclick="showTab('overview', this)">Overview</a>
+            <a href="#" onclick="showTab('gateway', this)">Gateway</a>
+            <a href="#" onclick="showTab('topology', this)">Topology</a>
+            <a href="#" onclick="showTab('routes', this)">Routes</a>
+            <a href="#" onclick="showTab('backends', this)">Backends</a>
+            <a href="#" onclick="showTab('logs', this)">Logs</a>
+            <a href="#" onclick="showTab('config', this)">Config</a>
+            <a href="#" onclick="showTab('middleware', this)">Middleware</a>
+            <a href="#" onclick="showTab('metrics', this)">Metrics</a>
+            <a href="#" onclick="showTab('api-docs', this)">API Docs</a>
+            <a href="#" onclick="showTab('schema', this)">Schema</a>
+            <a href="#" onclick="showTab('discovery', this)">Discovery</a>
+            <a href="#" onclick="showTab('tenants', this)">Tenants</a>
+            <a href="#" onclick="showTab('rewrite', this)">Rewrite</a>
         </div>
-        <div class="refresh-info">Auto-refresh: 5s | <span id="last-refresh">-</span></div>
+        <div class="refresh-info">Auto-refresh: 5s | <span id="last-refresh">-</span> | <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">&#9790;</button></div>
     </div>
 
     <div class="container">
@@ -81,9 +56,21 @@
 
         <div id="tab-routes" style="display:none">
             <div class="section">
-                <h2>Routes</h2>
+                <h2>Routes <button class="btn-primary" style="font-size:12px;padding:4px 12px;float:right" onclick="showAddRouteForm()">+ Add Route</button></h2>
+                <div id="route-form" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div><label style="font-size:12px;color:#94a3b8">Path Prefix</label><input id="rf-path" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px" placeholder="/api/v1/users" /></div>
+                        <div><label style="font-size:12px;color:#94a3b8">Strategy</label><select id="rf-strategy" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px"><option value="round_robin">round_robin</option><option value="weighted_round_robin">weighted_round_robin</option><option value="random">random</option><option value="consistent_hash">consistent_hash</option><option value="ip_hash">ip_hash</option><option value="canary">canary</option></select></div>
+                        <div style="grid-column:span 2"><label style="font-size:12px;color:#94a3b8">Backend Addresses (comma separated)</label><input id="rf-backends" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px" placeholder="localhost:8081,localhost:8082" /></div>
+                    </div>
+                    <div style="margin-top:12px;display:flex;gap:8px">
+                        <button class="btn-primary" onclick="createRoute()">Create</button>
+                        <button style="background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="hideAddRouteForm()">Cancel</button>
+                        <span id="rf-status" style="font-size:12px;color:#94a3b8;align-self:center"></span>
+                    </div>
+                </div>
                 <table>
-                    <thead><tr><th>Path</th><th>Strategy</th><th>Backends</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Path</th><th>Strategy</th><th>Backends</th><th>Actions</th></tr></thead>
                     <tbody id="routes-tbody"></tbody>
                 </table>
             </div>
@@ -98,23 +85,244 @@
                 </table>
             </div>
         </div>
+
+        <div id="tab-logs" style="display:none">
+            <div class="section">
+                <h2>Real-time Logs</h2>
+                <div class="log-controls">
+                    <select id="log-level-filter">
+                        <option value="">All Levels</option>
+                        <option value="debug">DEBUG</option>
+                        <option value="info">INFO</option>
+                        <option value="warn">WARN</option>
+                        <option value="error">ERROR</option>
+                    </select>
+                    <input type="text" id="log-source-filter" placeholder="Source filter..." />
+                    <button id="log-pause-btn" onclick="toggleLogPause()">Pause</button>
+                    <button onclick="clearLogTerminal()">Clear</button>
+                    <span style="font-size:12px;color:#64748b" id="log-status">Connecting...</span>
+                </div>
+                <div class="log-terminal" id="log-terminal"></div>
+            </div>
+        </div>
+
+        <div id="tab-config" style="display:none">
+            <div class="section">
+                <h2>Configuration Editor</h2>
+                <div class="config-toolbar">
+                    <button onclick="loadConfig()">Load</button>
+                    <button onclick="saveConfig()" id="config-save-btn">Save</button>
+                    <span class="status" id="config-status"></span>
+                </div>
+                <textarea class="config-editor" id="config-editor" spellcheck="false" placeholder="Click Load to fetch current configuration..."></textarea>
+            </div>
+        </div>
+
+        <div id="tab-middleware" style="display:none">
+            <div class="section">
+                <h2>Circuit Breaker</h2>
+                <div class="cb-state">
+                    <div class="cb-state-indicator closed" id="cb-indicator">C</div>
+                    <div>
+                        <div style="font-size:18px;font-weight:600" id="cb-state-text">Closed</div>
+                        <div style="font-size:12px;color:#94a3b8">Circuit breaker is allowing traffic through</div>
+                    </div>
+                </div>
+                <button class="btn-danger" onclick="showResetModal()">Reset Circuit Breaker</button>
+            </div>
+
+            <div class="section">
+                <h2>Rate Limiting</h2>
+                <div class="rl-input-group">
+                    <div class="field">
+                        <label>Requests / Second</label>
+                        <input type="number" id="rl-rps" min="0.1" step="0.1" placeholder="100" />
+                    </div>
+                    <div class="field">
+                        <label>Burst</label>
+                        <input type="number" id="rl-burst" min="1" step="1" placeholder="200" />
+                    </div>
+                    <button class="btn-primary" onclick="updateRateLimit()">Update</button>
+                    <span class="status" id="rl-status"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-metrics" style="display:none">
+            <div class="section">
+                <h2>Prometheus Metrics</h2>
+                <div id="metrics-cards" class="cards" style="margin-bottom:16px"></div>
+                <pre id="metrics-raw" style="background:#0c0c0c;border:1px solid #334155;border-radius:8px;padding:16px;font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-size:12px;line-height:1.5;max-height:500px;overflow-y:auto;color:#94a3b8;white-space:pre-wrap"></pre>
+            </div>
+        </div>
+
+        <div id="tab-api-docs" style="display:none">
+            <div class="section">
+                <h2>API Documentation</h2>
+                <div id="api-docs-content"></div>
+            </div>
+        </div>
+
+        <div id="tab-schema" style="display:none">
+            <div class="section">
+                <h2>Configuration Schema</h2>
+                <div id="schema-content"></div>
+            </div>
+        </div>
+
+        <div id="tab-discovery" style="display:none">
+            <div class="section">
+                <h2>Service Discovery</h2>
+                <div id="discovery-status" style="margin-bottom:16px"></div>
+                <table>
+                    <thead><tr><th>Service</th><th>Address</th><th>Status</th></tr></thead>
+                    <tbody id="discovery-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-tenants" style="display:none">
+            <div class="section">
+                <h2>Tenant Management <button class="btn-primary" style="font-size:12px;padding:4px 12px;float:right" onclick="showAddTenantForm()">+ Add Tenant</button></h2>
+                <div id="tenant-form" style="display:none;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div><label style="font-size:12px;color:var(--text-secondary)">Tenant ID</label><input id="tf-id" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="tenant-001" /></div>
+                        <div><label style="font-size:12px;color:var(--text-secondary)">Rate Limit RPS</label><input id="tf-rps" type="number" step="0.1" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="100" /></div>
+                        <div><label style="font-size:12px;color:var(--text-secondary)">Burst</label><input id="tf-burst" type="number" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="200" /></div>
+                        <div><label style="font-size:12px;color:var(--text-secondary)">Max Body Bytes</label><input id="tf-maxbody" type="number" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="10485760" /></div>
+                        <div style="grid-column:span 2"><label style="font-size:12px;color:var(--text-secondary)">Allowed Paths (comma separated)</label><input id="tf-allowed" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="/api/v1,/health" /></div>
+                        <div style="grid-column:span 2"><label style="font-size:12px;color:var(--text-secondary)">Blocked Paths (comma separated)</label><input id="tf-blocked" style="width:100%;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px" placeholder="/admin,/internal" /></div>
+                    </div>
+                    <div style="margin-top:12px;display:flex;gap:8px">
+                        <button class="btn-primary" onclick="createTenant()">Create</button>
+                        <button style="background:var(--border);color:var(--text-primary);border:1px solid var(--border-light);border-radius:6px;padding:6px 14px;cursor:pointer" onclick="hideAddTenantForm()">Cancel</button>
+                        <span id="tf-status" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
+                    </div>
+                </div>
+                <div id="tenant-config-info" style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)"></div>
+                <table>
+                    <thead><tr><th>ID</th><th>RPS</th><th>Burst</th><th>Max Body</th><th>Allowed Paths</th><th>Blocked Paths</th><th>Actions</th></tr></thead>
+                    <tbody id="tenants-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-rewrite" style="display:none">
+            <div class="section">
+                <h2>Route Rewrite Rules</h2>
+                <div style="margin-bottom:12px">
+                    <label style="font-size:12px;color:var(--text-secondary)">Select Route</label>
+                    <select id="rewrite-route-select" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-left:8px" onchange="loadRewriteRules()">
+                        <option value="">-- Select a route --</option>
+                    </select>
+                </div>
+                <div id="rewrite-content" style="display:none">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+                        <div>
+                            <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">Request Rewrite</h3>
+                            <div class="section" style="margin-bottom:12px">
+                                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Header Rewrite</h4>
+                                <div style="margin-bottom:8px">
+                                    <label style="font-size:11px;color:var(--text-muted)">Set (key:value per line)</label>
+                                    <textarea id="rw-req-header-set" style="width:100%;min-height:60px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="X-Custom:value&#10;X-Another:value2"></textarea>
+                                </div>
+                                <div style="margin-bottom:8px">
+                                    <label style="font-size:11px;color:var(--text-muted)">Add (key:value per line)</label>
+                                    <textarea id="rw-req-header-add" style="width:100%;min-height:60px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="X-Appended:value"></textarea>
+                                </div>
+                                <div>
+                                    <label style="font-size:11px;color:var(--text-muted)">Remove (one per line)</label>
+                                    <textarea id="rw-req-header-remove" style="width:100%;min-height:40px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="X-Unwanted-Header"></textarea>
+                                </div>
+                            </div>
+                            <div class="section">
+                                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Body Rewrite Rules</h4>
+                                <div id="rw-req-body-rules"></div>
+                                <button style="background:var(--border);color:var(--text-primary);border:1px solid var(--border-light);border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;margin-top:8px" onclick="addReqBodyRule()">+ Add Rule</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">Response Rewrite</h3>
+                            <div class="section" style="margin-bottom:12px">
+                                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Header Rewrite</h4>
+                                <div style="margin-bottom:8px">
+                                    <label style="font-size:11px;color:var(--text-muted)">Set (key:value per line)</label>
+                                    <textarea id="rw-resp-header-set" style="width:100%;min-height:60px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="X-Response-Custom:value"></textarea>
+                                </div>
+                                <div style="margin-bottom:8px">
+                                    <label style="font-size:11px;color:var(--text-muted)">Add (key:value per line)</label>
+                                    <textarea id="rw-resp-header-add" style="width:100%;min-height:60px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="X-Appended:value"></textarea>
+                                </div>
+                                <div>
+                                    <label style="font-size:11px;color:var(--text-muted)">Remove (one per line)</label>
+                                    <textarea id="rw-resp-header-remove" style="width:100%;min-height:40px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="Server&#10;X-Powered-By"></textarea>
+                                </div>
+                            </div>
+                            <div class="section">
+                                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Body Rewrite Rules</h4>
+                                <div id="rw-resp-body-rules"></div>
+                                <button style="background:var(--border);color:var(--text-primary);border:1px solid var(--border-light);border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;margin-top:8px" onclick="addRespBodyRule()">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;display:flex;gap:8px;align-items:center">
+                        <button class="btn-primary" onclick="saveRewriteRules()">Save Rewrite Rules</button>
+                        <span id="rw-status" class="status"></span>
+                    </div>
+                    <div class="section" style="margin-top:16px">
+                        <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Regex Preview</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                            <div>
+                                <label style="font-size:11px;color:var(--text-muted)">Test Input</label>
+                                <textarea id="rw-test-input" style="width:100%;min-height:80px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px" placeholder="Enter text to test against rewrite rules..."></textarea>
+                            </div>
+                            <div>
+                                <label style="font-size:11px;color:var(--text-muted)">Preview Output</label>
+                                <pre id="rw-test-output" style="width:100%;min-height:80px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px;color:var(--text-secondary);white-space:pre-wrap;overflow:auto"></pre>
+                            </div>
+                        </div>
+                        <button style="background:var(--border);color:var(--text-primary);border:1px solid var(--border-light);border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;margin-top:8px" onclick="testRewriteRules()">Test</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="reset-modal">
+        <div class="modal">
+            <h3>Reset Circuit Breaker?</h3>
+            <p>This will reset the circuit breaker to Closed state. Are you sure?</p>
+            <div class="modal-actions">
+                <button style="background:#334155;color:#e2e8f0" onclick="hideResetModal()">Cancel</button>
+                <button style="background:#991b1b;color:#f87171" onclick="confirmReset()">Reset</button>
+            </div>
+        </div>
     </div>
 
     <script>
     const API = '/api/v1';
     let currentTab = 'overview';
 
-    function showTab(tab) {
+    function showTab(tab, el) {
         currentTab = tab;
-        document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[id^="tab-"]').forEach(e => e.style.display = 'none');
         document.getElementById('tab-' + tab).style.display = '';
         document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
-        event.target.classList.add('active');
+        if (el) el.classList.add('active');
         if (tab === 'topology') loadTopology();
+        if (tab === 'logs') connectLogStream();
+        if (tab === 'middleware') loadMiddlewareState();
+        if (tab === 'metrics') loadMetrics();
+        if (tab === 'api-docs') loadAPIDocs();
+        if (tab === 'schema') loadSchema();
+        if (tab === 'discovery') loadDiscovery();
+        if (tab === 'tenants') loadTenants();
+        if (tab === 'rewrite') loadRewriteRoutes();
     }
 
-    async function fetchJSON(url) {
-        const resp = await fetch(API + url);
+    async function fetchJSON(url, opts) {
+        const resp = await fetch(API + url, opts);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return resp.json();
     }
 
@@ -149,13 +357,7 @@
                 const pct = s.utilization.toFixed(1);
                 const cls = s.utilization < 50 ? 'low' : s.utilization < 80 ? 'mid' : 'high';
                 const statusBadge = s.utilization >= 90 ? '<span class="badge unhealthy">PRESSURE</span>' : s.utilization >= 50 ? '<span class="badge" style="background:#854d0e;color:#facc15">LOADED</span>' : '<span class="badge healthy">NORMAL</span>';
-                return `<tr>
-                    <td>Shard ${s.id}</td>
-                    <td>${s.pending}</td>
-                    <td>${s.queueSize}</td>
-                    <td><div class="util-bar"><div class="util-bar-fill ${cls}" style="width:${Math.min(pct, 100)}%"></div></div> <small>${pct}%</small></td>
-                    <td>${statusBadge}</td>
-                </tr>`;
+                return `<tr><td>Shard ${s.id}</td><td>${s.pending}</td><td>${s.queueSize}</td><td><div class="util-bar"><div class="util-bar-fill ${cls}" style="width:${Math.min(pct, 100)}%"></div></div> <small>${pct}%</small></td><td>${statusBadge}</td></tr>`;
             }).join('');
         } else {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b">Gateway runtime data unavailable</td></tr>';
@@ -165,13 +367,48 @@
     async function loadRoutes() {
         const data = await fetchJSON('/routes');
         const tbody = document.getElementById('routes-tbody');
-        tbody.innerHTML = (data.routes || []).map(r => `
+        tbody.innerHTML = (data.routes || []).map((r, i) => `
             <tr>
+                <td><code style="color:#64748b">${r.id || 'route_' + i}</code></td>
                 <td><code>${r.match.path_prefix || r.match.path_exact || '/'}</code></td>
                 <td><span class="strategy">${r.strategy || 'default'}</span></td>
                 <td>${(r.backends || []).map(b => `<code>${b.address}</code> <small>(w:${b.weight})</small>`).join(', ')}</td>
+                <td><button style="background:#991b1b;color:#f87171;border:1px solid #f87171;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer" onclick="deleteRoute('${r.id || 'route_' + i}')">Delete</button></td>
             </tr>
         `).join('');
+    }
+
+    function showAddRouteForm() { document.getElementById('route-form').style.display = ''; }
+    function hideAddRouteForm() { document.getElementById('route-form').style.display = 'none'; }
+
+    async function createRoute() {
+        const status = document.getElementById('rf-status');
+        const path = document.getElementById('rf-path').value.trim();
+        const strategy = document.getElementById('rf-strategy').value;
+        const backendsStr = document.getElementById('rf-backends').value.trim();
+        if (!path) { status.textContent = 'Path is required'; status.style.color = '#f87171'; return; }
+        if (!backendsStr) { status.textContent = 'At least one backend is required'; status.style.color = '#f87171'; return; }
+        const backends = backendsStr.split(',').map(a => a.trim()).filter(a => a).map(a => ({ address: a, weight: 1 }));
+        try {
+            const resp = await fetch(API + '/routes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ match: { path_prefix: path }, backend: backends, strategy: strategy })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { status.textContent = data.error || 'Failed'; status.style.color = '#f87171'; return; }
+            status.textContent = 'Route created!'; status.style.color = '#4ade80';
+            hideAddRouteForm();
+            loadRoutes();
+        } catch(e) { status.textContent = e.message; status.style.color = '#f87171'; }
+    }
+
+    async function deleteRoute(id) {
+        if (!confirm('Delete route ' + id + '?')) return;
+        try {
+            await fetch(API + '/routes/' + id, { method: 'DELETE' });
+            loadRoutes();
+        } catch(e) { alert('Delete failed: ' + e.message); }
     }
 
     async function loadBackends() {
@@ -190,12 +427,10 @@
     async function loadTopology() {
         const data = await fetchJSON('/topology');
         const container = document.getElementById('topology-cytoscape');
-
         if (typeof cytoscape === 'undefined') {
             container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8">Topology view requires Cytoscape.js</div>';
             return;
         }
-
         const elements = [];
         (data.nodes || []).forEach(n => {
             let bg = '#1e293b', bc = '#475569', shape = 'round-rectangle';
@@ -210,17 +445,511 @@
             else if (e.type === 'forwards_to') color = '#38bdf8';
             elements.push({ data: { id: e.id, source: e.source, target: e.target }, style: { 'line-color': color, 'target-arrow-color': color, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.8 } });
         });
-
         if (window._cy) window._cy.destroy();
         window._cy = cytoscape({
-            container: container,
-            elements: elements,
+            container: container, elements: elements,
             style: [
                 { selector: 'node', style: { 'label': 'data(label)', 'text-wrap': 'wrap', 'text-valign': 'center', 'text-halign': 'center', 'font-size': 11, 'color': '#e2e8f0', 'width': 120, 'height': 50, 'text-max-width': 110 } },
                 { selector: 'edge', style: { 'width': 2 } }
             ],
             layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.5, padding: 30 }
         });
+    }
+
+    let logEventSource = null;
+    let logPaused = false;
+
+    function connectLogStream() {
+        if (logEventSource) return;
+        const terminal = document.getElementById('log-terminal');
+        const levelFilter = document.getElementById('log-level-filter').value;
+        const sourceFilter = document.getElementById('log-source-filter').value;
+        let url = API + '/logs/stream';
+        const params = new URLSearchParams();
+        if (levelFilter) params.set('level', levelFilter);
+        if (sourceFilter) params.set('source', sourceFilter);
+        if (params.toString()) url += '?' + params.toString();
+
+        logEventSource = new EventSource(url);
+        document.getElementById('log-status').textContent = 'Connected';
+
+        logEventSource.onmessage = function(event) {
+            if (logPaused) return;
+            try {
+                const entry = JSON.parse(event.data);
+                const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '';
+                const lvl = (entry.level || 'info').toLowerCase();
+                const src = entry.source || '';
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+                div.innerHTML = `<span class="ts">${ts}</span> <span class="lvl-${lvl}">${lvl.toUpperCase().padEnd(5)}</span> ${src ? '<span class="src">[' + src + ']</span> ' : ''}${escapeHtml(entry.message || '')}`;
+                terminal.appendChild(div);
+                const maxLines = 1000;
+                while (terminal.children.length > maxLines) terminal.removeChild(terminal.firstChild);
+                terminal.scrollTop = terminal.scrollHeight;
+            } catch(e) {}
+        };
+
+        logEventSource.onerror = function() {
+            document.getElementById('log-status').textContent = 'Disconnected - retrying...';
+        };
+    }
+
+    function toggleLogPause() {
+        logPaused = !logPaused;
+        const btn = document.getElementById('log-pause-btn');
+        btn.textContent = logPaused ? 'Resume' : 'Pause';
+        btn.classList.toggle('active', logPaused);
+    }
+
+    function clearLogTerminal() {
+        document.getElementById('log-terminal').innerHTML = '';
+    }
+
+    function escapeHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    async function loadConfig() {
+        const status = document.getElementById('config-status');
+        try {
+            const data = await fetchJSON('/config/edit');
+            document.getElementById('config-editor').value = data.config || '';
+            status.textContent = 'Config loaded';
+            status.className = 'status success';
+        } catch(e) {
+            status.textContent = 'Load failed: ' + e.message;
+            status.className = 'status error';
+        }
+    }
+
+    async function saveConfig() {
+        const status = document.getElementById('config-status');
+        const content = document.getElementById('config-editor').value;
+        try {
+            const resp = await fetch(API + '/config/edit', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config: content })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                status.textContent = 'Validation failed: ' + (data.error || 'Unknown error');
+                status.className = 'status error';
+                return;
+            }
+            status.textContent = 'Configuration saved and applied!';
+            status.className = 'status success';
+        } catch(e) {
+            status.textContent = 'Save failed: ' + e.message;
+            status.className = 'status error';
+        }
+    }
+
+    function loadMiddlewareState() {
+        const indicator = document.getElementById('cb-indicator');
+        indicator.className = 'cb-state-indicator closed';
+        indicator.textContent = 'C';
+        document.getElementById('cb-state-text').textContent = 'Closed';
+    }
+
+    function showResetModal() {
+        document.getElementById('reset-modal').classList.add('show');
+    }
+
+    function hideResetModal() {
+        document.getElementById('reset-modal').classList.remove('show');
+    }
+
+    async function confirmReset() {
+        hideResetModal();
+        try {
+            await fetch(API + '/circuitbreaker/reset', { method: 'POST' });
+            const indicator = document.getElementById('cb-indicator');
+            indicator.className = 'cb-state-indicator closed';
+            indicator.textContent = 'C';
+            document.getElementById('cb-state-text').textContent = 'Closed - Reset';
+        } catch(e) {}
+    }
+
+    async function updateRateLimit() {
+        const status = document.getElementById('rl-status');
+        const rps = parseFloat(document.getElementById('rl-rps').value);
+        const burst = parseInt(document.getElementById('rl-burst').value);
+        if (!rps || rps <= 0) { status.textContent = 'RPS must be positive'; status.className = 'status error'; return; }
+        if (!burst || burst <= 0) { status.textContent = 'Burst must be positive'; status.className = 'status error'; return; }
+        try {
+            const resp = await fetch(API + '/ratelimit', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests_per_second: rps, burst: burst })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                status.textContent = 'Failed: ' + (data.error || 'Unknown');
+                status.className = 'status error';
+                return;
+            }
+            status.textContent = `Updated: ${data.requests_per_second} RPS, burst ${data.burst}`;
+            status.className = 'status success';
+        } catch(e) {
+            status.textContent = 'Failed: ' + e.message;
+            status.className = 'status error';
+        }
+    }
+
+    async function loadMetrics() {
+        try {
+            const resp = await fetch(API + '/metrics/prometheus');
+            const text = await resp.text();
+            document.getElementById('metrics-raw').textContent = text;
+            const lines = text.split('\n');
+            const metrics = {};
+            let currentName = '';
+            lines.forEach(line => {
+                if (line.startsWith('# HELP')) {
+                    const m = line.match(/^# HELP (\w+)/);
+                    if (m) currentName = m[1];
+                } else if (line.startsWith('# TYPE')) {
+                    // skip
+                } else if (line && !line.startsWith('#')) {
+                    const m = line.match(/^(\w+)(?:\{[^}]*\})?\s+([\d.e+-]+)/);
+                    if (m) {
+                        if (!metrics[m[1]]) metrics[m[1]] = { value: 0, help: '' };
+                        metrics[m[1]].value += parseFloat(m[2]);
+                    }
+                }
+            });
+            const cardsEl = document.getElementById('metrics-cards');
+            const entries = Object.entries(metrics).slice(0, 8);
+            if (entries.length > 0) {
+                cardsEl.innerHTML = entries.map(([name, data]) => `
+                    <div class="card"><div class="label">${name}</div><div class="value info">${data.value.toFixed(0)}</div></div>
+                `).join('');
+            } else {
+                cardsEl.innerHTML = '<div class="card"><div class="label">Metrics</div><div class="value">No data</div></div>';
+            }
+        } catch(e) {
+            document.getElementById('metrics-raw').textContent = 'Failed to load metrics: ' + e.message;
+        }
+    }
+
+    async function loadAPIDocs() {
+        const container = document.getElementById('api-docs-content');
+        if (container.dataset.loaded) return;
+        try {
+            const data = await fetchJSON('/docs');
+            const paths = data.paths || {};
+            let html = '<div style="display:flex;flex-direction:column;gap:12px">';
+            for (const [path, methods] of Object.entries(paths)) {
+                for (const [method, info] of Object.entries(methods)) {
+                    const methodColor = method === 'get' ? '#4ade80' : method === 'post' ? '#38bdf8' : method === 'put' ? '#facc15' : method === 'delete' ? '#f87171' : '#94a3b8';
+                    html += `<div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+                            <span style="background:${methodColor};color:#0f172a;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase">${method}</span>
+                            <code style="font-size:14px;color:#e2e8f0">${path}</code>
+                        </div>
+                        <div style="font-size:13px;color:#94a3b8">${info.summary || ''}</div>
+                    </div>`;
+                }
+            }
+            html += '</div>';
+            container.innerHTML = html;
+            container.dataset.loaded = 'true';
+        } catch(e) {
+            container.innerHTML = '<p style="color:#f87171">Failed to load API docs: ' + e.message + '</p>';
+        }
+    }
+
+    async function loadSchema() {
+        const container = document.getElementById('schema-content');
+        if (container.dataset.loaded) return;
+        try {
+            const data = await fetchJSON('/config/schema');
+            let html = '<div style="display:flex;flex-direction:column;gap:16px">';
+            for (const [section, fields] of Object.entries(data)) {
+                if (section === 'env_prefix' || section === 'env_overrides') continue;
+                if (typeof fields !== 'object') continue;
+                html += `<div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px">
+                    <h3 style="font-size:15px;color:#38bdf8;margin-bottom:12px;text-transform:capitalize">${section}</h3>
+                    <table style="width:100%"><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>`;
+                for (const [field, info] of Object.entries(fields)) {
+                    if (typeof info !== 'object') continue;
+                    html += `<tr><td><code style="color:#a78bfa">${field}</code></td><td style="color:#94a3b8">${info.type || '-'}</td><td style="color:#4ade80">${info.default || '-'}</td><td style="color:#e2e8f0;font-size:12px">${info.description || ''}</td></tr>`;
+                }
+                html += '</tbody></table></div>';
+            }
+            if (data.env_overrides && Array.isArray(data.env_overrides)) {
+                html += `<div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px">
+                    <h3 style="font-size:15px;color:#38bdf8;margin-bottom:12px">Environment Variable Overrides</h3>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    ${data.env_overrides.map(e => `<code style="background:#1e293b;padding:4px 10px;border-radius:4px;font-size:12px;color:#facc15">${e}</code>`).join('')}
+                    </div></div>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+            container.dataset.loaded = 'true';
+        } catch(e) {
+            container.innerHTML = '<p style="color:#f87171">Failed to load schema: ' + e.message + '</p>';
+        }
+    }
+
+    async function loadDiscovery() {
+        const statusEl = document.getElementById('discovery-status');
+        const tbody = document.getElementById('discovery-tbody');
+        try {
+            const cfg = await fetchJSON('/config');
+            const etcdCfg = cfg.config_store?.etcd;
+            if (etcdCfg && etcdCfg.endpoints && etcdCfg.endpoints.length > 0) {
+                statusEl.innerHTML = `<div class="card" style="display:inline-block;padding:12px 20px">
+                    <span class="badge healthy">CONNECTED</span>
+                    <span style="margin-left:8px;color:var(--text-secondary);font-size:12px">etcd: ${etcdCfg.endpoints.join(', ')}</span>
+                </div>`;
+            } else {
+                statusEl.innerHTML = `<div class="card" style="display:inline-block;padding:12px 20px">
+                    <span class="badge unhealthy">DISABLED</span>
+                    <span style="margin-left:8px;color:var(--text-secondary);font-size:12px">No etcd endpoints configured</span>
+                </div>`;
+            }
+            const routes = cfg.routes || [];
+            let rows = [];
+            routes.forEach((r, i) => {
+                const path = r.match?.path_prefix || r.match?.path_exact || '/';
+                (r.backend || []).forEach(b => {
+                    rows.push(`<tr><td><code>${path}</code></td><td><code>${b.address}</code></td><td><span class="badge healthy">REGISTERED</span></td></tr>`);
+                });
+            });
+            tbody.innerHTML = rows.length > 0 ? rows.join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">No services discovered</td></tr>';
+        } catch(e) {
+            statusEl.innerHTML = `<p style="color:var(--danger)">Failed: ${e.message}</p>`;
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger)">Error loading discovery data</td></tr>';
+        }
+    }
+
+    async function loadTenants() {
+        try {
+            const data = await fetchJSON('/tenants');
+            const info = document.getElementById('tenant-config-info');
+            info.textContent = `Header: ${data.header_name || 'X-Tenant-ID'} | Default: ${data.default || 'none'} | Total: ${data.total || 0}`;
+            const tbody = document.getElementById('tenants-tbody');
+            const tenants = data.tenants || [];
+            if (tenants.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No tenants configured</td></tr>';
+                return;
+            }
+            tbody.innerHTML = tenants.map(t => `<tr>
+                <td><code style="color:var(--purple)">${escapeHtml(t.id)}</code></td>
+                <td>${t.rate_limit_rps || '-'}</td>
+                <td>${t.rate_limit_burst || '-'}</td>
+                <td>${t.max_body_bytes ? (t.max_body_bytes / 1024 / 1024).toFixed(1) + 'MB' : '-'}</td>
+                <td>${(t.allowed_paths || []).map(p => '<code style="color:var(--success);font-size:11px">' + escapeHtml(p) + '</code>').join(' ') || '<span style="color:var(--text-muted)">*</span>'}</td>
+                <td>${(t.blocked_paths || []).map(p => '<code style="color:var(--danger);font-size:11px">' + escapeHtml(p) + '</code>').join(' ') || '-'}</td>
+                <td><button style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer" onclick="deleteTenant('${escapeHtml(t.id)}')">Delete</button></td>
+            </tr>`).join('');
+        } catch(e) {
+            document.getElementById('tenants-tbody').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--danger)">Failed: ${e.message}</td></tr>`;
+        }
+    }
+
+    function showAddTenantForm() { document.getElementById('tenant-form').style.display = ''; }
+    function hideAddTenantForm() { document.getElementById('tenant-form').style.display = 'none'; }
+
+    async function createTenant() {
+        const status = document.getElementById('tf-status');
+        const id = document.getElementById('tf-id').value.trim();
+        if (!id) { status.textContent = 'Tenant ID is required'; status.style.color = 'var(--danger)'; return; }
+        const rps = parseFloat(document.getElementById('tf-rps').value) || 100;
+        const burst = parseInt(document.getElementById('tf-burst').value) || 200;
+        const maxBody = parseInt(document.getElementById('tf-maxbody').value) || 0;
+        const allowedStr = document.getElementById('tf-allowed').value.trim();
+        const blockedStr = document.getElementById('tf-blocked').value.trim();
+        const allowed = allowedStr ? allowedStr.split(',').map(s => s.trim()).filter(s => s) : [];
+        const blocked = blockedStr ? blockedStr.split(',').map(s => s.trim()).filter(s => s) : [];
+        try {
+            const resp = await fetch(API + '/tenants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, rate_limit_rps: rps, rate_limit_burst: burst, max_body_bytes: maxBody, allowed_paths: allowed, blocked_paths: blocked })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { status.textContent = data.error || 'Failed'; status.style.color = 'var(--danger)'; return; }
+            status.textContent = 'Tenant created!'; status.style.color = 'var(--success)';
+            hideAddTenantForm();
+            loadTenants();
+        } catch(e) { status.textContent = e.message; status.style.color = 'var(--danger)'; }
+    }
+
+    async function deleteTenant(id) {
+        if (!confirm('Delete tenant ' + id + '?')) return;
+        try {
+            await fetch(API + '/tenants/' + encodeURIComponent(id), { method: 'DELETE' });
+            loadTenants();
+        } catch(e) { alert('Delete failed: ' + e.message); }
+    }
+
+    async function loadRewriteRoutes() {
+        try {
+            const data = await fetchJSON('/routes');
+            const select = document.getElementById('rewrite-route-select');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">-- Select a route --</option>';
+            (data.routes || []).forEach((r, i) => {
+                const path = r.match?.path_prefix || r.match?.path_exact || '/';
+                const opt = document.createElement('option');
+                opt.value = r.id || 'route_' + i;
+                opt.textContent = (r.id || 'route_' + i) + ' - ' + path;
+                select.appendChild(opt);
+            });
+            if (currentVal) select.value = currentVal;
+        } catch(e) {}
+    }
+
+    async function loadRewriteRules() {
+        const routeId = document.getElementById('rewrite-route-select').value;
+        const content = document.getElementById('rewrite-content');
+        if (!routeId) { content.style.display = 'none'; return; }
+        content.style.display = '';
+        try {
+            const data = await fetchJSON('/routes/' + routeId);
+            const rw = data.rewrite || {};
+            document.getElementById('rw-req-header-set').value = mapToLines(rw.request_header?.set);
+            document.getElementById('rw-req-header-add').value = mapToLines(rw.request_header?.add);
+            document.getElementById('rw-req-header-remove').value = (rw.request_header?.remove || []).join('\n');
+            document.getElementById('rw-resp-header-set').value = mapToLines(rw.response_header?.set);
+            document.getElementById('rw-resp-header-add').value = mapToLines(rw.response_header?.add);
+            document.getElementById('rw-resp-header-remove').value = (rw.response_header?.remove || []).join('\n');
+            renderBodyRules('rw-req-body-rules', rw.request_body || []);
+            renderBodyRules('rw-resp-body-rules', rw.response_body || []);
+        } catch(e) {
+            document.getElementById('rw-status').textContent = 'Failed to load: ' + e.message;
+            document.getElementById('rw-status').className = 'status error';
+        }
+    }
+
+    function mapToLines(m) {
+        if (!m || typeof m !== 'object') return '';
+        return Object.entries(m).map(([k, v]) => k + ':' + v).join('\n');
+    }
+
+    function linesToMap(text) {
+        const m = {};
+        text.split('\n').forEach(line => {
+            const idx = line.indexOf(':');
+            if (idx > 0) m[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
+        });
+        return m;
+    }
+
+    function renderBodyRules(containerId, rules) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = rules.map((r, i) => `
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                <input class="rw-pattern" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" value="${escapeHtml(r.pattern || '')}" placeholder="regex pattern" />
+                <span style="color:var(--text-muted)">→</span>
+                <input class="rw-replacement" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" value="${escapeHtml(r.replacement || '')}" placeholder="replacement" />
+                <button style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer" onclick="this.parentElement.remove()">✕</button>
+            </div>
+        `).join('');
+    }
+
+    function addReqBodyRule() {
+        const container = document.getElementById('rw-req-body-rules');
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+        div.innerHTML = `
+            <input class="rw-pattern" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" placeholder="regex pattern" />
+            <span style="color:var(--text-muted)">→</span>
+            <input class="rw-replacement" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" placeholder="replacement" />
+            <button style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer" onclick="this.parentElement.remove()">✕</button>
+        `;
+        container.appendChild(div);
+    }
+
+    function addRespBodyRule() {
+        const container = document.getElementById('rw-resp-body-rules');
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+        div.innerHTML = `
+            <input class="rw-pattern" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" placeholder="regex pattern" />
+            <span style="color:var(--text-muted)">→</span>
+            <input class="rw-replacement" style="flex:1;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:12px" placeholder="replacement" />
+            <button style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer" onclick="this.parentElement.remove()">✕</button>
+        `;
+        container.appendChild(div);
+    }
+
+    function collectBodyRules(containerId) {
+        const container = document.getElementById(containerId);
+        const rules = [];
+        container.querySelectorAll('.rw-pattern').forEach((input, i) => {
+            const pattern = input.value.trim();
+            const replacement = container.querySelectorAll('.rw-replacement')[i]?.value || '';
+            if (pattern) rules.push({ pattern: pattern, replacement: replacement });
+        });
+        return rules;
+    }
+
+    async function saveRewriteRules() {
+        const status = document.getElementById('rw-status');
+        const routeId = document.getElementById('rewrite-route-select').value;
+        if (!routeId) { status.textContent = 'Select a route first'; status.className = 'status error'; return; }
+        const rewrite = {
+            request_header: {
+                set: linesToMap(document.getElementById('rw-req-header-set').value),
+                add: linesToMap(document.getElementById('rw-req-header-add').value),
+                remove: document.getElementById('rw-req-header-remove').value.split('\n').map(s => s.trim()).filter(s => s)
+            },
+            response_header: {
+                set: linesToMap(document.getElementById('rw-resp-header-set').value),
+                add: linesToMap(document.getElementById('rw-resp-header-add').value),
+                remove: document.getElementById('rw-resp-header-remove').value.split('\n').map(s => s.trim()).filter(s => s)
+            },
+            request_body: collectBodyRules('rw-req-body-rules'),
+            response_body: collectBodyRules('rw-resp-body-rules')
+        };
+        try {
+            const routeData = await fetchJSON('/routes/' + routeId);
+            routeData.rewrite = rewrite;
+            delete routeData.id;
+            const resp = await fetch(API + '/routes/' + routeId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(routeData)
+            });
+            if (!resp.ok) {
+                const data = await resp.json();
+                status.textContent = 'Failed: ' + (data.error || 'Unknown');
+                status.className = 'status error';
+                return;
+            }
+            status.textContent = 'Rewrite rules saved!';
+            status.className = 'status success';
+        } catch(e) {
+            status.textContent = 'Failed: ' + e.message;
+            status.className = 'status error';
+        }
+    }
+
+    function testRewriteRules() {
+        const input = document.getElementById('rw-test-input').value;
+        const output = document.getElementById('rw-test-output');
+        if (!input) { output.textContent = 'Enter test input first'; return; }
+        let result = input;
+        const reqRules = collectBodyRules('rw-req-body-rules');
+        const respRules = collectBodyRules('rw-resp-body-rules');
+        const allRules = reqRules.concat(respRules);
+        for (const rule of allRules) {
+            try {
+                const re = new RegExp(rule.pattern, 'g');
+                result = result.replace(re, rule.replacement);
+            } catch(e) {
+                result += '\n[ERROR: Invalid regex "' + rule.pattern + '": ' + e.message + ']';
+                break;
+            }
+        }
+        output.textContent = result;
     }
 
     async function refresh() {
@@ -236,6 +965,19 @@
 
     refresh();
     setInterval(refresh, 5000);
+
+    function toggleTheme() {
+        const html = document.documentElement;
+        const current = html.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('nexusgate-theme', next);
+    }
+
+    (function() {
+        const saved = localStorage.getItem('nexusgate-theme');
+        if (saved) document.documentElement.setAttribute('data-theme', saved);
+    })();
     </script>
     <script src="/static/lib/cytoscape.min.js" onerror="console.log('cytoscape.js not loaded, topology view disabled')"></script>
 </body>

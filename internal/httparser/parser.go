@@ -103,18 +103,17 @@ func (p *Parser) ParseRequest(conn net.Conn) (*gateway.Request, error) {
 		scheme = "https"
 	}
 
-	req := &gateway.Request{
-		Method:      method,
-		Path:        pathAndQuery,
-		Host:        host,
-		Headers:     headers,
-		QueryString: queryString,
-		Body:        body,
-		RawConn:     conn,
-		RemoteAddr:  conn.RemoteAddr().String(),
-		Scheme:      scheme,
-		TenantID:    tenantID,
-	}
+	req := gateway.AcquireRequest()
+	req.Method = method
+	req.Path = pathAndQuery
+	req.Host = host
+	req.Headers = headers
+	req.QueryString = queryString
+	req.Body = body
+	req.RawConn = conn
+	req.RemoteAddr = conn.RemoteAddr().String()
+	req.Scheme = scheme
+	req.TenantID = tenantID
 
 	return req, nil
 }
@@ -202,6 +201,7 @@ func readHeaders(reader *bufio.Reader, maxHeaderBytes int64) (http.Header, error
 
 		key, value, err := parseHeaderLine(line)
 		if err != nil {
+			slog.Debug("skipping malformed header line", "error", err, "line", line)
 			continue
 		}
 		headers.Add(key, value)
@@ -215,36 +215,7 @@ func readBody(reader *bufio.Reader, headers http.Header, method string, maxBodyB
 		return nil, nil
 	}
 
-	transferEncoding := headers.Get("Transfer-Encoding")
-	if isChunked(transferEncoding) {
-		return readChunkedBody(reader, maxBodyBytes)
-	}
-
-	contentLengthStr := headers.Get("Content-Length")
-	if contentLengthStr != "" {
-		contentLength, err := strconv.ParseInt(contentLengthStr, 10, 64)
-		if err != nil {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"invalid content-length", contentLengthStr)
-		}
-		if contentLength < 0 {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"negative content-length", contentLengthStr)
-		}
-		if contentLength > maxBodyBytes {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"body too large", fmt.Sprintf("exceeded %d bytes", maxBodyBytes))
-		}
-		if contentLength > 0 {
-			body := make([]byte, contentLength)
-			if _, err := io.ReadFull(reader, body); err != nil {
-				return nil, fmt.Errorf("read body: %w", err)
-			}
-			return body, nil
-		}
-	}
-
-	return nil, nil
+	return readBodyFromHeaders(reader, headers, maxBodyBytes)
 }
 
 func readResponseBody(reader *bufio.Reader, headers http.Header, statusCode int, maxBodyBytes int64) ([]byte, error) {
@@ -252,45 +223,54 @@ func readResponseBody(reader *bufio.Reader, headers http.Header, statusCode int,
 		return nil, nil
 	}
 
+	body, err := readBodyFromHeaders(reader, headers, maxBodyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	if body == nil && headers.Get("Content-Length") == "" && !isChunked(headers.Get("Transfer-Encoding")) {
+		body, err = io.ReadAll(io.LimitReader(reader, maxBodyBytes))
+		if err != nil {
+			return nil, fmt.Errorf("read body until close: %w", err)
+		}
+	}
+
+	return body, nil
+}
+
+func readBodyFromHeaders(reader *bufio.Reader, headers http.Header, maxBodyBytes int64) ([]byte, error) {
 	transferEncoding := headers.Get("Transfer-Encoding")
 	if isChunked(transferEncoding) {
 		return readChunkedBody(reader, maxBodyBytes)
 	}
 
 	contentLengthStr := headers.Get("Content-Length")
-	if contentLengthStr != "" {
-		contentLength, err := strconv.ParseInt(contentLengthStr, 10, 64)
-		if err != nil {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"invalid content-length", contentLengthStr)
-		}
-		if contentLength < 0 {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"negative content-length", contentLengthStr)
-		}
-		if contentLength > maxBodyBytes {
-			return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
-				"body too large", fmt.Sprintf("exceeded %d bytes", maxBodyBytes))
-		}
-		if contentLength > 0 {
-			body := make([]byte, contentLength)
-			if _, err := io.ReadFull(reader, body); err != nil {
-				return nil, fmt.Errorf("read body: %w", err)
-			}
-			return body, nil
-		}
+	if contentLengthStr == "" {
 		return nil, nil
 	}
 
-	if headers.Get("Content-Length") == "" && !isChunked(transferEncoding) {
-		body, err := io.ReadAll(io.LimitReader(reader, maxBodyBytes))
-		if err != nil {
-			return nil, fmt.Errorf("read body until close: %w", err)
-		}
-		return body, nil
+	contentLength, err := strconv.ParseInt(contentLengthStr, 10, 64)
+	if err != nil {
+		return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
+			"invalid content-length", contentLengthStr)
+	}
+	if contentLength < 0 {
+		return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
+			"negative content-length", contentLengthStr)
+	}
+	if contentLength > maxBodyBytes {
+		return nil, gateway.NewGatewayError(gateway.ErrBadRequest,
+			"body too large", fmt.Sprintf("exceeded %d bytes", maxBodyBytes))
+	}
+	if contentLength == 0 {
+		return nil, nil
 	}
 
-	return nil, nil
+	body := make([]byte, contentLength)
+	if _, err := io.ReadFull(reader, body); err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	return body, nil
 }
 
 func isChunked(transferEncoding string) bool {
@@ -422,7 +402,11 @@ func WriteResponse(conn net.Conn, resp *gateway.Response) error {
 		return err
 	}
 
-	if resp.Body != nil {
+	if resp.StreamBody != nil {
+		if resp.Headers.Get("Content-Length") == "" && resp.Headers.Get("Transfer-Encoding") == "" {
+			resp.Headers.Set("Transfer-Encoding", "chunked")
+		}
+	} else if resp.Body != nil {
 		resp.Headers.Set("Content-Length", strconv.Itoa(len(resp.Body)))
 	}
 
@@ -440,13 +424,51 @@ func WriteResponse(conn net.Conn, resp *gateway.Response) error {
 		return err
 	}
 
-	if resp.Body != nil && len(resp.Body) > 0 {
+	if resp.StreamBody != nil {
+		if resp.Headers.Get("Transfer-Encoding") == "chunked" {
+			if err := writeChunkedStream(conn, resp.StreamBody); err != nil {
+				return err
+			}
+		} else {
+			if _, err := io.Copy(conn, resp.StreamBody); err != nil {
+				return err
+			}
+		}
+		resp.StreamBody.Close()
+		resp.StreamBody = nil
+	} else if resp.Body != nil && len(resp.Body) > 0 {
 		if _, err := conn.Write(resp.Body); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func writeChunkedStream(dst io.Writer, src io.Reader) error {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, err := fmt.Fprintf(dst, "%x\r\n", n); err != nil {
+				return err
+			}
+			if _, err := dst.Write(buf[:n]); err != nil {
+				return err
+			}
+			if _, err := dst.Write([]byte("\r\n")); err != nil {
+				return err
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+	}
+	_, err := dst.Write([]byte("0\r\n\r\n"))
+	return err
 }
 
 func sanitizeHeader(s string) string {

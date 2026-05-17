@@ -67,6 +67,7 @@ plugin:
   hot_reload: true
 
 config:
+  allow_private_backends: true
   etcd:
     endpoints:
       - "http://etcd:2379"

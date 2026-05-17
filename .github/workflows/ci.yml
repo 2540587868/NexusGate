@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25']
+        go-version: ['1.26']
 
     steps:
       - uses: actions/checkout@v4
@@ -20,19 +20,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go-version }}-
-
-      - name: Download dependencies
-        run: go mod download
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Vet
         run: go vet ./...
@@ -41,7 +30,7 @@ jobs:
         run: go build -ldflags "-X main.version=ci -X main.gitCommit=${{ github.sha }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/nexusgate/
 
       - name: Test
-        run: go test ./... -count=1 -timeout 120s -race -coverprofile=coverage.out
+        run: go test ./... -count=1 -timeout 120s -race -parallel=4 -coverprofile=coverage.out
 
       - name: Coverage report
         run: |
@@ -52,7 +41,7 @@ jobs:
           go tool cover -func=coverage.out | grep -E "^github.com/nexusgate/nexusgate/internal/" | sort -t: -k2 -n
 
       - name: Upload coverage
-        if: matrix.go-version == '1.25'
+        if: matrix.go-version == '1.26'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-out
@@ -66,13 +55,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.12.2
           args: --timeout=5m
+          skip-cache: true
+          skip-save-cache: true
+          verify: false
 
   docker:
     runs-on: ubuntu-latest

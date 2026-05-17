@@ -18,8 +18,7 @@ test-cover:
 	go tool cover -func=coverage.out | tail -1
 
 lint:
-	go vet ./...
-	gofmt -l -s .
+	golangci-lint run ./... --timeout 5m
 
 fmt:
 	gofmt -w -s .

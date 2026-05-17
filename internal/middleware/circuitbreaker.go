@@ -134,3 +134,21 @@ func (cb *CircuitBreaker) State() State {
 	defer cb.mu.Unlock()
 	return cb.state
 }
+
+func (cb *CircuitBreaker) Reset() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.state = StateClosed
+	cb.failureCount = 0
+	cb.successCount = 0
+	cb.halfOpenActive = 0
+	cb.lastFailure = time.Time{}
+}
+
+func (cb *CircuitBreaker) UpdateConfig(failureThreshold, successThreshold int, timeout time.Duration) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failureThreshold = failureThreshold
+	cb.successThreshold = successThreshold
+	cb.timeout = timeout
+}

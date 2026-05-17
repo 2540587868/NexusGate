@@ -160,3 +160,101 @@ func TestRouterUpdateBackends(t *testing.T) {
 		t.Error("backend should have been updated, got old address")
 	}
 }
+
+func TestRouterLeastConnRelease(t *testing.T) {
+	r := NewRouter()
+	r.AddRoute(&Route{
+		ID:       "lc-route",
+		Match:    MatchRule{PathPrefix: "/api"},
+		Backends: []*Backend{
+			{Address: "10.0.0.1:8080", Weight: 1, Healthy: true},
+		},
+		Strategy: StrategyLeastConn,
+	})
+
+	req := &gateway.Request{Method: "GET", Path: "/api/test", Headers: http.Header{}}
+	_, backend, err := r.Route(req)
+	if err != nil {
+		t.Fatalf("Route() error = %v", err)
+	}
+
+	lc := r.selectors[StrategyLeastConn].(*LeastConn)
+	count := lc.GetConnectionCount(backend.Address)
+	if count != 1 {
+		t.Errorf("expected connection count 1 after Select, got %d", count)
+	}
+
+	r.Release(StrategyLeastConn, backend.Address)
+	count = lc.GetConnectionCount(backend.Address)
+	if count != 0 {
+		t.Errorf("expected connection count 0 after Release, got %d", count)
+	}
+}
+
+func TestRouterLeastConnReleaseBalance(t *testing.T) {
+	r := NewRouter()
+	r.AddRoute(&Route{
+		ID:       "lc-route",
+		Match:    MatchRule{PathPrefix: "/api"},
+		Backends: []*Backend{
+			{Address: "10.0.0.1:8080", Weight: 1, Healthy: true},
+			{Address: "10.0.0.2:8080", Weight: 1, Healthy: true},
+		},
+		Strategy: StrategyLeastConn,
+	})
+
+	lc := r.selectors[StrategyLeastConn].(*LeastConn)
+
+	for i := 0; i < 100; i++ {
+		req := &gateway.Request{Method: "GET", Path: "/api/test", Headers: http.Header{}}
+		_, backend, err := r.Route(req)
+		if err != nil {
+			t.Fatalf("Route() error = %v", err)
+		}
+		r.Release(StrategyLeastConn, backend.Address)
+	}
+
+	count1 := lc.GetConnectionCount("10.0.0.1:8080")
+	count2 := lc.GetConnectionCount("10.0.0.2:8080")
+	if count1 != 0 || count2 != 0 {
+		t.Errorf("expected all connection counts to be 0 after balanced Select/Release, got %d and %d", count1, count2)
+	}
+}
+
+func TestRouterHeaderMatch(t *testing.T) {
+	r := NewRouter()
+	r.AddRoute(&Route{
+		ID: "header-route",
+		Match: MatchRule{
+			PathPrefix: "/api",
+			Headers:    map[string]string{"X-Version": "v2"},
+		},
+		Backends: []*Backend{
+			{Address: "10.0.0.2:8080", Weight: 1, Healthy: true},
+		},
+		Strategy: StrategyWeightedRR,
+	})
+
+	req := &gateway.Request{Method: "GET", Path: "/api/test", Headers: http.Header{}}
+	req.Headers.Set("X-Version", "v2")
+	route, _, err := r.Route(req)
+	if err != nil {
+		t.Fatalf("Route() with matching header should succeed: %v", err)
+	}
+	if route.ID != "header-route" {
+		t.Errorf("expected route 'header-route', got %q", route.ID)
+	}
+
+	reqNoHeader := &gateway.Request{Method: "GET", Path: "/api/test", Headers: http.Header{}}
+	_, _, err = r.Route(reqNoHeader)
+	if err == nil {
+		t.Error("expected error for missing required header, got nil")
+	}
+
+	reqWrongHeader := &gateway.Request{Method: "GET", Path: "/api/test", Headers: http.Header{}}
+	reqWrongHeader.Headers.Set("X-Version", "v1")
+	_, _, err = r.Route(reqWrongHeader)
+	if err == nil {
+		t.Error("expected error for wrong header value, got nil")
+	}
+}

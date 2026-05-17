@@ -3,24 +3,35 @@ package lifecycle
 import (
 	"context"
 	"log/slog"
+	"math"
 	"runtime/debug"
 	"sync"
 	"time"
 )
 
 type Recoverable struct {
-	mu       sync.Mutex
-	running  map[string]context.CancelFunc
-	restarts map[string]int
-	maxRetry int
+	mu           sync.Mutex
+	running      map[string]context.CancelFunc
+	restarts     map[string]int
+	maxRetry     int
+	maxBackoff   time.Duration
 }
 
 func NewRecoverable(maxRetry int) *Recoverable {
 	return &Recoverable{
-		running:  make(map[string]context.CancelFunc),
-		restarts: make(map[string]int),
-		maxRetry: maxRetry,
+		running:    make(map[string]context.CancelFunc),
+		restarts:   make(map[string]int),
+		maxRetry:   maxRetry,
+		maxBackoff: 30 * time.Second,
 	}
+}
+
+func NewRecoverableWithBackoff(maxRetry int, maxBackoff time.Duration) *Recoverable {
+	r := NewRecoverable(maxRetry)
+	if maxBackoff > 0 {
+		r.maxBackoff = maxBackoff
+	}
+	return r
 }
 
 func (r *Recoverable) Go(name string, fn func(ctx context.Context) error) {
@@ -46,9 +57,10 @@ func (r *Recoverable) Go(name string, fn func(ctx context.Context) error) {
 				r.mu.Unlock()
 
 				if count <= r.maxRetry {
-					slog.Info("restarting goroutine", "name", name, "attempt", count)
+					delay := time.Duration(math.Min(math.Pow(2, float64(count-1)), float64(r.maxBackoff/time.Second))) * time.Second
+					slog.Info("restarting goroutine", "name", name, "attempt", count, "delay", delay)
 					select {
-					case <-time.After(time.Duration(count) * time.Second):
+					case <-time.After(delay):
 						r.Go(name, fn)
 					case <-ctx.Done():
 						slog.Info("goroutine restart cancelled", "name", name)

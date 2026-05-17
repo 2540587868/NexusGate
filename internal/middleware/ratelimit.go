@@ -8,13 +8,14 @@ import (
 )
 
 type RateLimiter struct {
-	mu          sync.Mutex
-	buckets     map[string]*tokenBucket
-	rate        float64
-	burst       int
-	maxBuckets  int
-	lastCleanup time.Time
-	cleanupInterval time.Duration
+	mu               sync.Mutex
+	buckets          map[string]*tokenBucket
+	rate             float64
+	burst            int
+	maxBuckets       int
+	lastCleanup      time.Time
+	cleanupInterval  time.Duration
+	bucketExpiry     time.Duration
 }
 
 type tokenBucket struct {
@@ -24,13 +25,28 @@ type tokenBucket struct {
 
 func NewRateLimiter(rate float64, burst int) *RateLimiter {
 	return &RateLimiter{
-		buckets:          make(map[string]*tokenBucket),
-		rate:             rate,
-		burst:            burst,
-		maxBuckets:       100000,
-		lastCleanup:      time.Now(),
-		cleanupInterval:  5 * time.Minute,
+		buckets:         make(map[string]*tokenBucket),
+		rate:            rate,
+		burst:           burst,
+		maxBuckets:      100000,
+		lastCleanup:     time.Now(),
+		cleanupInterval: 5 * time.Minute,
+		bucketExpiry:    10 * time.Minute,
 	}
+}
+
+func NewRateLimiterWithConfig(rate float64, burst int, maxBuckets int, cleanupInterval, bucketExpiry time.Duration) *RateLimiter {
+	rl := NewRateLimiter(rate, burst)
+	if maxBuckets > 0 {
+		rl.maxBuckets = maxBuckets
+	}
+	if cleanupInterval > 0 {
+		rl.cleanupInterval = cleanupInterval
+	}
+	if bucketExpiry > 0 {
+		rl.bucketExpiry = bucketExpiry
+	}
+	return rl
 }
 
 func RateLimit(limiter *RateLimiter) gateway.Middleware {
@@ -86,10 +102,21 @@ func (rl *RateLimiter) Allow(key string) bool {
 }
 
 func (rl *RateLimiter) cleanup(now time.Time) {
-	expiryThreshold := 10 * time.Minute
 	for key, bucket := range rl.buckets {
-		if now.Sub(bucket.lastTime) > expiryThreshold {
+		if now.Sub(bucket.lastTime) > rl.bucketExpiry {
 			delete(rl.buckets, key)
 		}
 	}
+}
+
+func (rl *RateLimiter) UpdateRate(rate float64) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.rate = rate
+}
+
+func (rl *RateLimiter) UpdateBurst(burst int) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.burst = burst
 }

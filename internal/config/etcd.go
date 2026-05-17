@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.etcd.io/etcd/client/v3"
@@ -22,18 +23,44 @@ type EtcdProviderConfig struct {
 }
 
 type EtcdProvider struct {
-	config  EtcdProviderConfig
-	client  *clientv3.Client
-	store   *Store
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
+	config       EtcdProviderConfig
+	client       *clientv3.Client
+	store        *Store
+	mu           sync.Mutex
+	running      bool
+	cancel       context.CancelFunc
+	cache        *etcdCache
+	missCount    atomic.Int64
+}
+
+type etcdCache struct {
+	mu     sync.RWMutex
+	data   []byte
+	valid  bool
+}
+
+func (c *etcdCache) Store(data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = make([]byte, len(data))
+	copy(c.data, data)
+	c.valid = true
+}
+
+func (c *etcdCache) Load() ([]byte, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.valid {
+		return nil, false
+	}
+	return c.data, true
 }
 
 func NewEtcdProvider(cfg EtcdProviderConfig, store *Store) *EtcdProvider {
 	return &EtcdProvider{
 		config: cfg,
 		store:  store,
+		cache:  &etcdCache{},
 	}
 }
 
@@ -111,6 +138,16 @@ func (ep *EtcdProvider) Load(ctx context.Context) error {
 	ep.store.Update(func(current *Config) {
 		*current = *cfg
 	})
+
+	if err := validateConfig(cfg); err != nil {
+		ep.store.Rollback()
+		return fmt.Errorf("validate etcd config: %w", err)
+	}
+
+	ep.store.Commit()
+
+	ep.cache.Store([]byte(configYAML.String()))
+	ep.missCount.Store(0)
 
 	slog.Info("loaded config from etcd", "keys", len(resp.Kvs))
 	return nil
@@ -195,6 +232,31 @@ func (ep *EtcdProvider) Stop() {
 		ep.client.Close()
 		ep.client = nil
 	}
+}
+
+func (ep *EtcdProvider) LoadFromCache(ctx context.Context, missThreshold int64) error {
+	if data, ok := ep.cache.Load(); ok {
+		cfg, err := parseYAMLConfig(data)
+		if err != nil {
+			slog.Warn("failed to parse cached config", "error", err)
+		} else {
+			ep.store.Update(func(current *Config) {
+				*current = *cfg
+			})
+			ep.store.Commit()
+			return nil
+		}
+	}
+
+	ep.missCount.Add(1)
+	if missThreshold > 0 && ep.missCount.Load() >= missThreshold {
+		slog.Warn("cache miss threshold reached, attempting etcd reload",
+			"misses", ep.missCount.Load(), "threshold", missThreshold)
+		ep.missCount.Store(0)
+		return ep.Load(ctx)
+	}
+
+	return fmt.Errorf("no cached config available")
 }
 
 func parseYAMLConfig(data []byte) (*Config, error) {

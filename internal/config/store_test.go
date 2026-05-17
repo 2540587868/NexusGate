@@ -36,6 +36,8 @@ gateway:
 proxy:
   pool_size: 128
   pool_max_idle: 32
+config:
+  allow_private_backends: true
 routes:
   - match:
       path_prefix: "/api/v1"

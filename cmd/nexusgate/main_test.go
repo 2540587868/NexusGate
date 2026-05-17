@@ -324,6 +324,8 @@ server:
 gateway:
   shard_count: 4
   queue_size: 1024
+config:
+  allow_private_backends: true
 routes:
   - match:
       path_prefix: "/api"

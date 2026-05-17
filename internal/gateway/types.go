@@ -1,14 +1,106 @@
 package gateway
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
 const DefaultShardCount = 8
+
+var requestPool = sync.Pool{
+	New: func() interface{} {
+		return &Request{
+			Headers: make(http.Header, 8),
+			RespCh:  make(chan *ResponseResult, 1),
+		}
+	},
+}
+
+var responsePool = sync.Pool{
+	New: func() interface{} {
+		return &Response{
+			Headers: make(http.Header, 4),
+		}
+	},
+}
+
+func AcquireRequest() *Request {
+	req := requestPool.Get().(*Request)
+	req.poolOwned = true
+	return req
+}
+
+func ReleaseRequest(req *Request) {
+	if !req.poolOwned {
+		return
+	}
+	req.poolOwned = false
+
+	req.ID = ""
+	req.TenantID = ""
+	req.Method = ""
+	req.Path = ""
+	req.Host = ""
+	req.QueryString = ""
+	req.RemoteAddr = ""
+	req.Scheme = ""
+	req.shardKey = 0
+	req.startTime = time.Time{}
+	req.routeKey = ""
+
+	for k := range req.Headers {
+		delete(req.Headers, k)
+	}
+
+	if cap(req.Body) > 1<<20 {
+		req.Body = nil
+	} else {
+		req.Body = req.Body[:0]
+	}
+
+	req.RawConn = nil
+	req.Ctx = nil
+
+	requestPool.Put(req)
+}
+
+func AcquireResponse() *Response {
+	resp := responsePool.Get().(*Response)
+	resp.poolOwned = true
+	return resp
+}
+
+func ReleaseResponse(resp *Response) {
+	if !resp.poolOwned {
+		return
+	}
+	resp.poolOwned = false
+
+	resp.StatusCode = 0
+
+	for k := range resp.Headers {
+		delete(resp.Headers, k)
+	}
+
+	if resp.StreamBody != nil {
+		resp.StreamBody.Close()
+		resp.StreamBody = nil
+	}
+
+	if cap(resp.Body) > 1<<20 {
+		resp.Body = nil
+	} else {
+		resp.Body = resp.Body[:0]
+	}
+
+	responsePool.Put(resp)
+}
 
 type Request struct {
 	ID          string
@@ -22,11 +114,13 @@ type Request struct {
 	RawConn     net.Conn
 	RemoteAddr  string
 	Scheme      string
+	Ctx         context.Context
 
-	shardKey  uint32
-	startTime time.Time
-	routeKey  string
-	RespCh    chan *ResponseResult
+	shardKey   uint32
+	startTime  time.Time
+	routeKey   string
+	RespCh     chan *ResponseResult
+	poolOwned  bool
 }
 
 type ResponseResult struct {
@@ -58,6 +152,8 @@ type Response struct {
 	StatusCode int
 	Headers    http.Header
 	Body       []byte
+	StreamBody io.ReadCloser
+	poolOwned  bool
 }
 
 type Handler func(*Request) (*Response, error)

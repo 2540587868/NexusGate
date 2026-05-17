@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,6 +16,7 @@ type HealthChecker struct {
 	interval  time.Duration
 	timeout   time.Duration
 	threshold int
+	checkPath string
 	onChange  func(address string, healthy bool)
 	client    *http.Client
 }
@@ -32,15 +34,23 @@ func NewHealthChecker(interval, timeout time.Duration, threshold int) *HealthChe
 		interval:  interval,
 		timeout:   timeout,
 		threshold: threshold,
+		checkPath: "/health",
 		client: &http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				IdleConnTimeout:     30 * time.Second,
-				DisableKeepAlives:   false,
+				MaxIdleConns:      10,
+				IdleConnTimeout:   90 * time.Second,
+				DisableKeepAlives: false,
 			},
 		},
 	}
+}
+
+func (hc *HealthChecker) WithCheckPath(path string) *HealthChecker {
+	if path != "" {
+		hc.checkPath = path
+	}
+	return hc
 }
 
 func (hc *HealthChecker) OnChange(fn func(address string, healthy bool)) {
@@ -143,7 +153,15 @@ func (hc *HealthChecker) checkAll() {
 }
 
 func (hc *HealthChecker) check(address string) error {
-	url := fmt.Sprintf("http://%s/health", address)
+	scheme := "http"
+	host := address
+	if strings.HasPrefix(address, "https://") {
+		scheme = "https"
+		host = strings.TrimPrefix(address, "https://")
+	} else if strings.HasPrefix(address, "http://") {
+		host = strings.TrimPrefix(address, "http://")
+	}
+	url := fmt.Sprintf("%s://%s%s", scheme, host, hc.checkPath)
 	resp, err := hc.client.Get(url)
 	if err != nil {
 		return err

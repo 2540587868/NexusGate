@@ -37,7 +37,7 @@ func TestProxyForwardGET(t *testing.T) {
 	}
 
 	backendNode := &router.Backend{Address: addr, Weight: 1, Healthy: true}
-	resp, err := px.Forward(req, backendNode)
+	resp, err := px.Forward(req, backendNode, nil)
 	if err != nil {
 		t.Fatalf("Forward() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestProxyForwardPOST(t *testing.T) {
 	}
 
 	backendNode := &router.Backend{Address: addr, Weight: 1, Healthy: true}
-	resp, err := px.Forward(req, backendNode)
+	resp, err := px.Forward(req, backendNode, nil)
 	if err != nil {
 		t.Fatalf("Forward() error = %v", err)
 	}
@@ -100,7 +100,7 @@ func TestProxyForwardBackendDown(t *testing.T) {
 	}
 
 	backendNode := &router.Backend{Address: "127.0.0.1:1", Weight: 1, Healthy: true}
-	_, err := px.Forward(req, backendNode)
+	_, err := px.Forward(req, backendNode, nil)
 	if err == nil {
 		t.Error("expected error for unreachable backend, got nil")
 	}
@@ -238,5 +238,51 @@ func TestRetryPolicyCustomStatus(t *testing.T) {
 	}
 	if IsRetryableStatus(503, policy) {
 		t.Error("503 should not be retryable with custom policy")
+	}
+}
+
+func TestForwardRetrySwitchesBackend(t *testing.T) {
+	callCount := 0
+	goodBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(200)
+		w.Write([]byte("ok"))
+	}))
+	defer goodBackend.Close()
+
+	px := NewProxy(10, 5).WithRetryPolicy(&RetryPolicy{
+		MaxRetries:      2,
+		RetryableStatus: []int{502, 503, 504},
+		Backoff:         &FixedBackoff{Interval: 10 * time.Millisecond},
+	})
+
+	req := &gateway.Request{
+		Method:     "GET",
+		Path:       "/api/test",
+		Host:       "example.com",
+		Headers:    http.Header{},
+		RemoteAddr: "192.168.1.1:12345",
+		Scheme:     "http",
+	}
+
+	route := &router.Route{
+		ID:       "route_0",
+		Strategy: router.StrategyWeightedRR,
+		Backends: []*router.Backend{
+			{Address: "127.0.0.1:1", Weight: 1, Healthy: true},
+			{Address: goodBackend.Listener.Addr().String(), Weight: 1, Healthy: true},
+		},
+	}
+
+	backend := route.Backends[0]
+	resp, err := px.Forward(req, backend, route)
+	if err != nil {
+		t.Fatalf("Forward() error = %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Errorf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+	if callCount != 1 {
+		t.Errorf("good backend called %d times, want 1", callCount)
 	}
 }
